@@ -1,0 +1,355 @@
+# PromptBank .gitignore
+# Comprehensive gitignore for Swift/iOS/macOS development
+# Future-proofed for long-term use
+
+# ===================================
+# macOS System Files
+# ===================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ===================================
+# Xcode
+# ===================================
+## User settings
+xcuserdata/
+**/xcuserdata/
+
+## Xcode 8+ compatibility
+*.xcscmblueprint
+*.xccheckout
+
+## Xcode workspaces
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+## Build generated
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Various Xcode settings
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+## Obj-C/Swift specific
+*.hmap
+*.xcuserstate
+
+## Xcode patches
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+/*.gcno
+
+# ===================================
+# Swift Package Manager
+# ===================================
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+.build/
+.index-build/
+
+# ===================================
+# CocoaPods (if used in future)
+# ===================================
+Pods/
+*.xcworkspace
+
+# ===================================
+# Carthage (if used in future)
+# ===================================
+Carthage/Build/
+Carthage/Checkouts
+
+# ===================================
+# Fastlane (if used in future)
+# ===================================
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+fastlane/.env
+fastlane/.env.*
+
+# ===================================
+# Code Coverage
+# ===================================
+*.profraw
+*.coverage
+*.xcresult
+xcov_report/
+coverage/
+.coverage/
+
+# ===================================
+# Environment & Secrets
+# ===================================
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.p12
+*.cer
+*.key
+*.mobileprovision
+.secrets/
+secrets/
+credentials/
+
+# ===================================
+# IDE - Various Editors
+# ===================================
+## VS Code
+.vscode/
+*.code-workspace
+
+## JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+## Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+## TextMate
+*.tmproj
+
+## BBEdit
+*.bbprojectd
+
+## Nova
+.nova/
+
+# ===================================
+# Testing & CI/CD
+# ===================================
+test-results/
+TestResults/
+*.xcresult
+junit.xml
+test-reports/
+ci-artifacts/
+.scannerwork/
+
+# ===================================
+# Logs and Databases
+# ===================================
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+logs/
+*.trace
+
+# ===================================
+# Temporary Files
+# ===================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+tmp/
+temp/
+
+# ===================================
+# Archives and Packages
+# ===================================
+*.zip
+*.tar.gz
+*.tgz
+*.jar
+*.war
+*.ear
+*.nar
+*.rar
+
+# ===================================
+# Node (for any web components)
+# ===================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/
+
+# ===================================
+# Python (for any scripts)
+# ===================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.Python
+
+# ===================================
+# Ruby (for any scripts/tools)
+# ===================================
+*.gem
+.bundle/
+vendor/bundle/
+.ruby-version
+.ruby-gemset
+
+# ===================================
+# Documentation builds
+# ===================================
+docs/_build/
+docs/.build/
+site/
+.docsets/
+
+# ===================================
+# OS Generated Files
+# ===================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+
+# ===================================
+# Backup files
+# ===================================
+*.bak
+*.backup
+*.old
+~*
+
+# ===================================
+# Project Specific
+# ===================================
+# Add any project-specific ignores here
+PromptBank.xcodeproj/
+private/
+.private/
+
+# ===================================
+# Future-proofing patterns
+# ===================================
+# AI/ML model files (future feature)
+*.mlmodel
+*.mlmodelc
+*.coreml
+models/
+checkpoints/
+
+# Augmented Reality (future feature)
+*.reality
+*.rcproject
+
+# Swift Playgrounds
+*.playground/playground.xcworkspace
+*.playground/timeline.xctimeline
+
+# Instruments
+*.trace
+*.tracetemplate
+
+# Provisioning Profiles
+*.mobileprovision
+*.provisionprofile
+
+# Signing
+*.xcconfig
+!Config/*.xcconfig
+
+# Large files that shouldn't be tracked
+*.mp4
+*.mov
+*.avi
+*.mpg
+*.mpeg
+*.wmv
+*.flv
+*.mkv
+*.psd
+*.sketch
+*.fig
+*.xd
+
+# Archive files (except when needed)
+*.dmg
+*.iso
+
+# ===================================
+# Security Scanner Results
+# ===================================
+security-reports/
+vulnerability-reports/
+.audit/
+
+# ===================================
+# Performance profiling
+# ===================================
+*.memgraph
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+
+# ===================================
+# Localization (generated files)
+# ===================================
+*.lproj/Localizable.strings
+!Base.lproj/
+
+# ===================================
+# Keep these files/folders
+# ===================================
+!.gitignore
+!.gitattributes
+!README.md
+!CLAUDE.md
+!LICENSE
+!Makefile
+!project.yml
+!Package.swift
+!ci_scripts/
+!Tests/
+!Sources/
+!Resources/
+!Assets.xcassets/
+!Info.plist
+!*.entitlements

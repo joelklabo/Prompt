@@ -1,0 +1,40 @@
+#!/bin/sh
+# Pre-commit hook for code quality
+
+echo "🔍 Running pre-commit checks..."
+
+# Get staged Swift files
+SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$')
+
+if [ -z "$SWIFT_FILES" ]; then
+    echo "✅ No Swift files to check"
+    exit 0
+fi
+
+echo "📋 Checking $(echo "$SWIFT_FILES" | wc -l | tr -d ' ') Swift files..."
+
+# Check if required tools are installed
+if ! command -v swiftlint >/dev/null 2>&1; then
+    echo "⚠️ SwiftLint not installed. Install with: brew install swiftlint"
+    exit 0
+fi
+
+if ! command -v swift-format >/dev/null 2>&1; then
+    echo "⚠️ swift-format not installed. Install with: brew install swift-format"
+    exit 0
+fi
+
+# Run SwiftLint
+echo "Running SwiftLint..."
+swiftlint lint --fix --format --quiet $SWIFT_FILES
+
+# Run SwiftFormat
+echo "Running SwiftFormat..."
+swift-format format -i $SWIFT_FILES
+
+# Re-stage formatted files
+echo "Re-staging formatted files..."
+echo "$SWIFT_FILES" | xargs git add
+
+echo "✅ Pre-commit checks complete"
+exit 0

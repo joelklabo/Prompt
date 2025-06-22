@@ -1,0 +1,111 @@
+included:
+  - Shared
+  - macOS
+  - iOS
+  - Tests
+
+excluded:
+  - .build
+  - DerivedData
+  - ${DERIVED_DATA}
+  - ${PODS_ROOT}
+  - ${SRCROOT}/Carthage
+  - ${SRCROOT}/.build
+  - Shared/Views/OptimizedPromptDetailView.swift
+  - Shared/Views/OptimizedContentView.swift
+  - Shared/Services/OptimizedPromptService.swift
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - modifier_order
+  - prefer_self_type_over_type_of_self
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - discouraged_none_name
+  - first_where
+  - last_where
+  - multiline_parameters
+  - multiline_function_chains
+  - operator_usage_whitespace
+  - overridden_super_call
+  - pattern_matching_keywords
+  - prefer_zero_over_explicit_init
+  - sorted_imports
+  - static_operator
+  - toggle_bool
+  - unavailable_function
+  - unowned_variable_capture
+  - yoda_condition
+
+analyzer_rules:
+  - unused_declaration
+  - unused_import
+
+disabled_rules:
+  - todo
+
+line_length:
+  warning: 120
+  error: 150
+  ignores_urls: true
+  ignores_function_declarations: true
+  ignores_comments: true
+
+identifier_name:
+  min_length:
+    warning: 2
+  max_length:
+    warning: 50
+  excluded:
+    - id
+    - ai
+    - ui
+    - os
+    - to
+
+type_name:
+  min_length: 3
+  max_length: 50
+
+function_body_length:
+  warning: 40
+  error: 80
+
+type_body_length:
+  warning: 200
+  error: 400
+
+file_length:
+  warning: 500
+  error: 1000
+
+cyclomatic_complexity:
+  warning: 10
+  error: 20
+
+nesting:
+  type_level: 2
+  function_level: 3
+
+trailing_whitespace:
+  ignores_empty_lines: true
+
+vertical_whitespace:
+  max_empty_lines: 2
+
+custom_rules:
+  no_print_statements:
+    name: "No print statements"
+    regex: '\bprint\s*\('
+    message: "Use Logger instead of print statements"
+    severity: warning
+    
+  proper_logger_usage:
+    name: "Use proper logger categories"
+    regex: 'Logger\(subsystem:\s*"[^"]*",\s*category:\s*""'
+    message: "Logger category should not be empty"
+    severity: error
+
+reporter: "xcode"

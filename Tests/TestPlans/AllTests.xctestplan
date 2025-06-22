@@ -1,0 +1,45 @@
+{
+  "configurations" : [
+    {
+      "id" : "DEFAULT",
+      "name" : "Default",
+      "options" : {
+        "testTimeoutsEnabled" : true,
+        "maximumTestExecutionTimeAllowance" : 60
+      }
+    },
+    {
+      "id" : "CI",
+      "name" : "CI",
+      "options" : {
+        "testTimeoutsEnabled" : true,
+        "maximumTestExecutionTimeAllowance" : 120,
+        "testRepetitionMode" : "retryOnFailure",
+        "maximumTestRepetitions" : 2
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : {
+      "targets" : ["PromptBank-macOS", "PromptBank-iOS"]
+    },
+    "testExecutionOrdering" : "random"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:PromptBank.xcodeproj",
+        "identifier" : "SharedTests-macOS",
+        "name" : "SharedTests-macOS"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:PromptBank.xcodeproj",
+        "identifier" : "SharedTests-iOS",
+        "name" : "SharedTests-iOS"
+      }
+    }
+  ],
+  "version" : 1
+}

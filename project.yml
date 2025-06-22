@@ -1,0 +1,124 @@
+name: Prompt
+options:
+  bundleIdPrefix: com.prompt
+  deploymentTarget:
+    macOS: "15.0"
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: "complete"
+    ENABLE_TESTING_SEARCH_PATHS: true
+
+packages: {}
+
+targets:
+  Prompt-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - macOS
+      - path: Shared
+        excludes:
+          - "**/*.md"
+    info:
+      path: macOS/Info.plist
+    entitlements:
+      path: macOS/Prompt.entitlements
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.prompt.macos
+      MARKETING_VERSION: 1.0.0
+      CURRENT_PROJECT_VERSION: 1
+  
+  Prompt-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - iOS
+      - path: Shared
+        excludes:
+          - "**/*.md"
+    info:
+      path: iOS/Info.plist
+    entitlements:
+      path: iOS/Prompt.entitlements
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.prompt.ios
+      MARKETING_VERSION: 1.0.0
+      CURRENT_PROJECT_VERSION: 1
+      TARGETED_DEVICE_FAMILY: "1,2"
+  
+  SharedTests-iOS:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/SharedTests
+      - path: Shared
+        excludes:
+          - "**/*.md"
+    dependencies:
+      - target: Prompt-iOS
+    settings:
+      ENABLE_TESTING_SEARCH_PATHS: true
+      GENERATE_INFOPLIST_FILE: true
+  
+  SharedTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/SharedTests
+      - path: Shared
+        excludes:
+          - "**/*.md"
+    dependencies:
+      - target: Prompt-macOS
+    settings:
+      ENABLE_TESTING_SEARCH_PATHS: true
+      GENERATE_INFOPLIST_FILE: true
+  
+  macOSTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/macOSTests
+    dependencies:
+      - target: Prompt-macOS
+    settings:
+      GENERATE_INFOPLIST_FILE: true
+  
+  iOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/iOSTests
+    dependencies:
+      - target: Prompt-iOS
+    settings:
+      GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  Prompt-macOS:
+    build:
+      targets:
+        Prompt-macOS: all
+        SharedTests-macOS: [test]
+        macOSTests: [test]
+    test:
+      targets:
+        - SharedTests-macOS
+        - macOSTests
+  
+  Prompt-iOS:
+    build:
+      targets:
+        Prompt-iOS: all
+        SharedTests-iOS: [test]
+        iOSTests: [test]
+    test:
+      targets:
+        - SharedTests-iOS
+        - iOSTests
