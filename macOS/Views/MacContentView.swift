@@ -16,28 +16,38 @@ struct MacContentView: View {
                 },
                 content: {
                     PromptListView(
-                        prompts: appState.displayedPrompts.compactMap { item in
-                            // Convert lightweight items to full prompts for now
-                            // This is temporary until we update PromptListView
-                            let prompt = Prompt(
+                        promptSummaries: appState.displayedPrompts.map { item in
+                            // Convert lightweight items to PromptSummary
+                            PromptSummary(
+                                id: item.id,
                                 title: item.title,
-                                content: item.contentPreview,
-                                category: item.category
+                                contentPreview: item.contentPreview,
+                                category: item.category,
+                                tagNames: [],
+                                createdAt: item.modifiedAt,  // Using modifiedAt as createdAt is not available
+                                modifiedAt: item.modifiedAt,
+                                isFavorite: item.isFavorite,
+                                viewCount: 0,
+                                copyCount: 0,
+                                categoryConfidence: nil,
+                                shortLink: nil
                             )
-                            prompt.id = item.id
-                            prompt.modifiedAt = item.modifiedAt
-                            prompt.metadata.isFavorite = item.isFavorite
-                            return prompt
                         },
-                        selectedPrompt: Binding(
-                            get: { appState.selectedPrompt },
-                            set: { appState.selectedPrompt = $0 }
+                        selectedPromptID: Binding(
+                            get: { appState.selectedPromptID },
+                            set: { newID in
+                                if let id = newID {
+                                    Task {
+                                        await appState.selectPrompt(id)
+                                    }
+                                }
+                            }
                         ),
-                        onDelete: { prompt in
-                            await appState.deletePromptById(prompt.id)
+                        onDelete: { promptID in
+                            await appState.deletePromptById(promptID)
                         },
-                        onToggleFavorite: { prompt in
-                            await appState.toggleFavorite(for: prompt.id)
+                        onToggleFavorite: { promptID in
+                            await appState.toggleFavorite(for: promptID)
                         },
                         onLoadMore: {
                             await appState.loadMorePrompts()
@@ -48,28 +58,12 @@ struct MacContentView: View {
                     .navigationSplitViewColumnWidth(min: 300, ideal: 400)
                 },
                 detail: {
-                    if let selectedPrompt = appState.selectedPrompt {
+                    if let selectedID = appState.selectedPromptID {
                         PromptDetailView(
-                            prompt: Binding(
-                                get: { selectedPrompt },
-                                set: { _ in }
-                            ),
-                            promptService: appState.promptService,
-                            onUpdate: { title, content, category in
-                                await appState.updatePrompt(
-                                    selectedPrompt,
-                                    title: title,
-                                    content: content,
-                                    category: category
-                                )
-                            },
-                            onAnalyze: {
-                                await appState.analyzePrompt(selectedPrompt)
-                            },
-                            onCopy: {
-                                appState.copyPromptContent(selectedPrompt)
-                            }
+                            promptID: selectedID,
+                            promptService: appState.promptService
                         )
+                        .environment(appState)
                     } else {
                         ContentUnavailableView(
                             "Select a Prompt",

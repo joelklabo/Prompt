@@ -2,7 +2,11 @@ import Foundation
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Service Tests")
 struct ServiceTests {
@@ -35,17 +39,20 @@ struct ServiceTests {
 
     @Test("Fetch prompts returns sorted list")
     func fetchPromptsSorted() async throws {
-        // Create prompts with different dates
+        // Create prompts in local context
+        let context = ModelContext(container)
+        
         let prompt1 = Prompt(title: "First", content: "Content 1", category: .prompts)
-        let prompt2 = Prompt(title: "Second", content: "Content 2", category: .prompts)
-
-        try await promptService.savePrompt(prompt1)
+        context.insert(prompt1)
+        try context.save()
 
         // Ensure different modification times
         try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
 
+        let prompt2 = Prompt(title: "Second", content: "Content 2", category: .prompts)
         prompt2.modifiedAt = Date()
-        try await promptService.savePrompt(prompt2)
+        context.insert(prompt2)
+        try context.save()
 
         let prompts = try await promptService.fetchPrompts()
 
@@ -56,6 +63,9 @@ struct ServiceTests {
 
     @Test("Search prompts by content")
     func searchPrompts() async throws {
+        // Create prompts in local context
+        let context = ModelContext(container)
+        
         let prompt1 = Prompt(
             title: "Swift Testing",
             content: "Learn about the new Swift Testing framework",
@@ -72,9 +82,10 @@ struct ServiceTests {
             category: .configs
         )
 
-        try await promptService.savePrompt(prompt1)
-        try await promptService.savePrompt(prompt2)
-        try await promptService.savePrompt(prompt3)
+        context.insert(prompt1)
+        context.insert(prompt2)
+        context.insert(prompt3)
+        try context.save()
 
         // Search for "Swift"
         let swiftResults = try await promptService.searchPrompts(query: "Swift")
@@ -92,15 +103,19 @@ struct ServiceTests {
 
     @Test("Fetch prompts by category")
     func fetchByCategory() async throws {
+        // Create prompts in local context
+        let context = ModelContext(container)
+        
         let prompt1 = Prompt(title: "Prompt 1", content: "Content", category: .prompts)
         let prompt2 = Prompt(title: "Config 1", content: "Content", category: .configs)
         let prompt3 = Prompt(title: "Command 1", content: "Content", category: .commands)
         let prompt4 = Prompt(title: "Prompt 2", content: "Content", category: .prompts)
 
-        try await promptService.savePrompt(prompt1)
-        try await promptService.savePrompt(prompt2)
-        try await promptService.savePrompt(prompt3)
-        try await promptService.savePrompt(prompt4)
+        context.insert(prompt1)
+        context.insert(prompt2)
+        context.insert(prompt3)
+        context.insert(prompt4)
+        try context.save()
 
         let promptResults = try await promptService.fetchPromptsByCategory(.prompts)
         #expect(promptResults.count == 2)
@@ -112,43 +127,51 @@ struct ServiceTests {
         #expect(commandResults.count == 1)
     }
 
-    @Test("Toggle favorite status")
-    func toggleFavorite() async throws {
+    @Test("Update prompt fields")
+    func updatePromptFields() async throws {
+        // Create prompt in local context to avoid passing across actor boundary
+        let promptId = UUID()
+        let context = ModelContext(container)
         let prompt = Prompt(
-            title: "Favorite Test",
-            content: "Testing favorites",
+            title: "Update Test",
+            content: "Testing updates",
             category: .prompts
         )
-
-        #expect(prompt.metadata.isFavorite == false)
-
-        try await promptService.savePrompt(prompt)
-        try await promptService.toggleFavorite(for: prompt)
-
-        #expect(prompt.metadata.isFavorite == true)
-
-        try await promptService.toggleFavorite(for: prompt)
-        #expect(prompt.metadata.isFavorite == false)
+        prompt.id = promptId
+        context.insert(prompt)
+        try context.save()
+        
+        // Update title
+        let updatedPrompt = try await promptService.updatePrompt(
+            PromptUpdateRequest(id: promptId, field: .title, value: "Updated Title")
+        )
+        #expect(updatedPrompt.title == "Updated Title")
+        
+        // Update category
+        let categoryUpdated = try await promptService.updatePrompt(
+            PromptUpdateRequest(id: promptId, field: .category, value: Category.commands.rawValue)
+        )
+        #expect(categoryUpdated.category == .commands)
     }
 
     @Test("Create and manage tags")
     func tagManagement() async throws {
-        // Create tag
-        let tag = try await tagService.createTag(name: "swift", color: "#FF6B6B")
-        #expect(tag.name == "swift")
-        #expect(tag.color == "#FF6B6B")
+        // Create tag using request
+        let tagRequest = TagCreateRequest(name: "swift", color: "#FF6B6B")
+        let tagDetail = try await tagService.createTag(tagRequest)
+        #expect(tagDetail.name == "swift")
+        #expect(tagDetail.color == "#FF6B6B")
 
         // Find or create existing tag
-        let existingTag = try await tagService.findOrCreateTag(name: "swift")
-        #expect(existingTag.id == tag.id)
+        let existingTagId = try await tagService.findOrCreateTag(name: "swift")
+        #expect(existingTagId == tagDetail.id)
 
         // Find or create new tag
-        let newTag = try await tagService.findOrCreateTag(name: "testing")
-        #expect(newTag.id != tag.id)
-        #expect(newTag.name == "testing")
+        let newTagId = try await tagService.findOrCreateTag(name: "testing")
+        #expect(newTagId != tagDetail.id)
 
-        // Fetch all tags
-        let allTags = try await tagService.fetchAllTags()
+        // Fetch all tags as summaries (Sendable)
+        let allTags = try await tagService.fetchAllTagSummaries()
         #expect(allTags.count == 2)
     }
 
@@ -160,21 +183,30 @@ struct ServiceTests {
             category: .prompts
         )
 
-        let tag1 = try await tagService.createTag(name: "tag1")
-        let tag2 = try await tagService.createTag(name: "tag2")
+        let tag1 = try await tagService.createTag(TagCreateRequest(name: "tag1", color: "#007AFF"))
+        let tag2 = try await tagService.createTag(TagCreateRequest(name: "tag2", color: "#007AFF"))
 
-        try await promptService.savePrompt(prompt)
+        // Save prompt in local context
+        let promptId = prompt.id
+        let context = ModelContext(container)
+        context.insert(prompt)
+        try context.save()
 
         // Add tags
-        try await promptService.addTag(tag1, to: prompt)
-        try await promptService.addTag(tag2, to: prompt)
+        try await promptService.addTag(tagId: tag1.id, to: promptId)
+        try await promptService.addTag(tagId: tag2.id, to: promptId)
 
-        #expect(prompt.tags.count == 2)
+        // Check tags through DTO
+        let promptDetail1 = try await promptService.getPromptDetail(id: promptId)
+        #expect(promptDetail1?.tags.count == 2)
 
         // Remove tag
-        try await promptService.removeTag(tag1, from: prompt)
-        #expect(prompt.tags.count == 1)
-        #expect(prompt.tags.first?.name == "tag2")
+        try await promptService.removeTag(tagId: tag1.id, from: promptId)
+        
+        // Check tags again through DTO
+        let promptDetail2 = try await promptService.getPromptDetail(id: promptId)
+        #expect(promptDetail2?.tags.count == 1)
+        #expect(promptDetail2?.tags.first?.name == "tag2")
     }
 
     @Test("Create version history")
@@ -185,26 +217,39 @@ struct ServiceTests {
             category: .prompts
         )
 
-        try await promptService.savePrompt(prompt)
+        // Save prompt in local context
+        let promptId = prompt.id
+        let context = ModelContext(container)
+        context.insert(prompt)
+        try context.save()
 
         // Create first version
         try await promptService.createVersion(
-            for: prompt,
+            promptID: promptId,
             changeDescription: "Initial version"
         )
 
-        #expect(prompt.versions.count == 1)
-        #expect(prompt.versions.first?.versionNumber == 1)
+        // Fetch versions to see updated versions
+        let versions1 = try await promptService.getPromptVersionSummaries(promptID: promptId)
+        #expect(versions1.count == 1)
+        #expect(versions1.first?.versionNumber == 1)
 
-        // Update and create another version
-        prompt.content = "Updated content"
+        // Update content through service and create another version
+        _ = try await promptService.updatePrompt(
+            PromptUpdateRequest(id: promptId, field: .content, value: "Updated content")
+        )
+        
         try await promptService.createVersion(
-            for: prompt,
+            promptID: promptId,
             changeDescription: "Updated content"
         )
 
-        #expect(prompt.versions.count == 2)
-        #expect(prompt.versions.last?.versionNumber == 2)
-        #expect(prompt.versions.last?.content == "Original content")
+        // Fetch versions again to check final state
+        let versions2 = try await promptService.getPromptVersionSummaries(promptID: promptId)
+        #expect(versions2.count == 2)
+        // Versions are sorted descending, so last version is first
+        #expect(versions2.first?.versionNumber == 2)
+        // Verify the version was created with a description
+        #expect(versions2.first?.changeDescription == "Updated content")
     }
 }

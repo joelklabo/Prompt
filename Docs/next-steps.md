@@ -1,0 +1,9 @@
+- We need a centralized way to show progress loading, saving, etc. add that and then we'll work on performance
+- Saving a large markdown file blocks the main thread, let's fix that
+- Same for clicking on a prompt and viewing it, seems to take a long time
+- When I hover over buttons I don't get a tooltip telling me what it does
+- I don't see a way to view the markdown rendered, this should be the default
+- Clicking the sidebar button doesn't collapse it
+- Prompt entry text field should have a maximum height, it fills the screen and it's hard to see the buttons. Also, all those buttons should have more space around them and be layed out more cleanly.
+- When you have a file open there shold be some stats shown like file size, creation date, etc.
+- Import and Export dont seem to do anything

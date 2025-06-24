@@ -1,7 +1,11 @@
 import Foundation
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("AI Analysis Tests")
 @MainActor

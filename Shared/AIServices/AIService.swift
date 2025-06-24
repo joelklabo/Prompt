@@ -41,21 +41,16 @@ final class AIService: ObservableObject {
     func analyzeBatch(_ prompts: [Prompt]) async throws -> [AIAnalysis] {
         logger.info("Starting batch analysis for \(prompts.count) prompts")
 
-        return try await withThrowingTaskGroup(of: AIAnalysis.self) { group in
-            for prompt in prompts {
-                group.addTask { [self] in
-                    try await self.analyzePrompt(prompt)
-                }
-            }
+        var results: [AIAnalysis] = []
 
-            var results: [AIAnalysis] = []
-            for try await analysis in group {
-                results.append(analysis)
-            }
-
-            logger.info("Batch analysis completed")
-            return results
+        // Process sequentially since we're already on MainActor
+        for prompt in prompts {
+            let analysis = try await analyzePrompt(prompt)
+            results.append(analysis)
         }
+
+        logger.info("Batch analysis completed")
+        return results
     }
 
     func generatePromptImprovement(_ prompt: Prompt) async throws -> String {

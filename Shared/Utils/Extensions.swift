@@ -79,6 +79,9 @@ extension Notification.Name {
     static let promptAdded = Notification.Name("promptAdded")
     static let analysisComplete = Notification.Name("analysisComplete")
     static let importPrompts = Notification.Name("importPrompts")
+    static let populateTestData = Notification.Name("populateTestData")
+    static let clearAllData = Notification.Name("clearAllData")
+    static let showPerformanceStats = Notification.Name("showPerformanceStats")
 }
 
 // MARK: - Error Extensions
@@ -303,6 +306,22 @@ struct MarkdownParser {
 
         return markdown
     }
+
+    static func generateMarkdown(for promptDetail: PromptDetail) -> String {
+        var markdown = "---\n"
+        markdown += "title: \(promptDetail.title)\n"
+        markdown += "category: \(promptDetail.category.rawValue)\n"
+        if !promptDetail.tags.isEmpty {
+            let tagNames = promptDetail.tags.map { $0.name }.joined(separator: ", ")
+            markdown += "tags: [\(tagNames)]\n"
+        }
+        markdown += "created: \(ISO8601DateFormatter().string(from: promptDetail.createdAt))\n"
+        markdown += "---\n\n"
+        markdown += "# \(promptDetail.title)\n\n"
+        markdown += promptDetail.content
+
+        return markdown
+    }
 }
 
 // MARK: - Drag Drop Utils
@@ -429,6 +448,11 @@ struct DragDropUtils {
     // Generate export filename
     static func exportFilename(for prompt: Prompt) -> String {
         let sanitizedTitle = sanitizeFilename(prompt.title)
+        return "\(sanitizedTitle).md"
+    }
+
+    static func exportFilename(for promptDetail: PromptDetail) -> String {
+        let sanitizedTitle = sanitizeFilename(promptDetail.title)
         return "\(sanitizedTitle).md"
     }
 }

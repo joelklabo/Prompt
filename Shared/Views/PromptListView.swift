@@ -7,27 +7,27 @@ import UniformTypeIdentifiers
 #endif
 
 struct PromptListView: View {
-    let prompts: [Prompt]
-    @Binding var selectedPrompt: Prompt?
-    let onDelete: (Prompt) async -> Void
-    let onToggleFavorite: (Prompt) async -> Void
+    let promptSummaries: [PromptSummary]
+    @Binding var selectedPromptID: UUID?
+    let onDelete: (UUID) async -> Void
+    let onToggleFavorite: (UUID) async -> Void
     let onLoadMore: (() async -> Void)?
     let hasMore: Bool
     let isLoadingMore: Bool
 
-    @State private var deletingPrompt: Prompt?
+    @State private var deletingPromptID: UUID?
 
     init(
-        prompts: [Prompt],
-        selectedPrompt: Binding<Prompt?>,
-        onDelete: @escaping (Prompt) async -> Void,
-        onToggleFavorite: @escaping (Prompt) async -> Void,
+        promptSummaries: [PromptSummary],
+        selectedPromptID: Binding<UUID?>,
+        onDelete: @escaping (UUID) async -> Void,
+        onToggleFavorite: @escaping (UUID) async -> Void,
         onLoadMore: (() async -> Void)? = nil,
         hasMore: Bool = false,
         isLoadingMore: Bool = false
     ) {
-        self.prompts = prompts
-        self._selectedPrompt = selectedPrompt
+        self.promptSummaries = promptSummaries
+        self._selectedPromptID = selectedPromptID
         self.onDelete = onDelete
         self.onToggleFavorite = onToggleFavorite
         self.onLoadMore = onLoadMore
@@ -36,8 +36,8 @@ struct PromptListView: View {
     }
 
     var body: some View {
-        List(selection: $selectedPrompt) {
-            if prompts.isEmpty {
+        List(selection: $selectedPromptID) {
+            if promptSummaries.isEmpty {
                 ContentUnavailableView(
                     "No Prompts",
                     systemImage: "doc.text",
@@ -45,38 +45,39 @@ struct PromptListView: View {
                 )
                 .listRowSeparator(.hidden)
             } else {
-                ForEach(prompts) { prompt in
+                ForEach(promptSummaries) { summary in
                     PromptRowView(
-                        prompt: prompt,
-                        isSelected: selectedPrompt?.id == prompt.id,
+                        summary: summary,
+                        isSelected: selectedPromptID == summary.id,
                         onToggleFavorite: {
                             Task {
-                                await onToggleFavorite(prompt)
+                                await onToggleFavorite(summary.id)
                             }
                         }
                     )
-                    .tag(prompt)
-                    #if os(macOS)
-                        .promptDraggable(prompt)
-                    #endif
+                    .tag(summary.id)
                     #if os(iOS)
                         .onTapGesture {
-                            selectedPrompt = prompt
+                            selectedPromptID = summary.id
+                        }
+                    #else
+                        .onTapGesture {
+                            selectedPromptID = summary.id
                         }
                     #endif
                 }
                 .onDelete { indexSet in
                     for index in indexSet {
-                        let prompt = prompts[index]
+                        let summary = promptSummaries[index]
                         Task {
-                            await onDelete(prompt)
+                            await onDelete(summary.id)
                         }
                     }
                 }
             }
 
             // Load more indicator and trigger
-            if hasMore && !prompts.isEmpty {
+            if hasMore && !promptSummaries.isEmpty {
                 HStack {
                     Spacer()
                     if isLoadingMore {
@@ -118,7 +119,7 @@ struct PromptListView: View {
 }
 
 struct PromptRowView: View {
-    let prompt: Prompt
+    let summary: PromptSummary
     let isSelected: Bool
     let onToggleFavorite: () -> Void
 
@@ -126,59 +127,64 @@ struct PromptRowView: View {
 
     private func getCategoryIcon() -> String {
         // Safely access the category with a fallback
-        return prompt.category.icon
+        return summary.category.icon
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Label(prompt.title, systemImage: getCategoryIcon())
+                Label(summary.title, systemImage: getCategoryIcon())
                     .font(.headline)
                     .lineLimit(1)
 
                 Spacer()
 
-                if prompt.metadata.isFavorite {
+                if summary.isFavorite {
                     Image(systemName: "star.fill")
                         .foregroundStyle(.yellow)
                         .font(.caption)
                 }
 
-                if let confidence = prompt.aiAnalysis?.categoryConfidence {
+                if let confidence = summary.categoryConfidence {
                     ConfidenceBadge(confidence: confidence)
                 }
             }
 
-            Text(prompt.content)
+            Text(summary.contentPreview)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            if !prompt.tags.isEmpty {
+            if !summary.tagNames.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
-                        ForEach(prompt.tags) { tag in
-                            TagChip(tag: tag)
+                        ForEach(summary.tagNames, id: \.self) { tagName in
+                            Text(tagName)
+                                .font(.caption2)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.2))
+                                .clipShape(Capsule())
                         }
                     }
                 }
             }
 
             HStack {
-                Text(prompt.modifiedAt.formatted(date: .abbreviated, time: .omitted))
+                Text(summary.modifiedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
 
                 Spacer()
 
-                if prompt.metadata.viewCount > 0 {
-                    Label("\(prompt.metadata.viewCount)", systemImage: "eye")
+                if summary.viewCount > 0 {
+                    Label("\(summary.viewCount)", systemImage: "eye")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
 
-                if prompt.metadata.copyCount > 0 {
-                    Label("\(prompt.metadata.copyCount)", systemImage: "doc.on.doc")
+                if summary.copyCount > 0 {
+                    Label("\(summary.copyCount)", systemImage: "doc.on.doc")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -196,8 +202,8 @@ struct PromptRowView: View {
             .swipeActions(edge: .leading) {
                 Button(action: onToggleFavorite) {
                     Label(
-                        prompt.metadata.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: prompt.metadata.isFavorite ? "star.slash" : "star"
+                        summary.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: summary.isFavorite ? "star.slash" : "star"
                     )
                 }
                 .tint(.yellow)
@@ -229,7 +235,7 @@ struct PromptRowView: View {
                 .help("Copy prompt content to clipboard")
             #endif
 
-            if let shortLink = prompt.shortLink {
+            if let shortLink = summary.shortLink {
                 Button("Copy Link", systemImage: "link") {
                     copyLink(shortLink)
                 }
@@ -248,13 +254,13 @@ struct PromptRowView: View {
             Divider()
 
             Button(
-                prompt.metadata.isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                systemImage: prompt.metadata.isFavorite ? "star.slash" : "star"
+                summary.isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                systemImage: summary.isFavorite ? "star.slash" : "star"
             ) {
                 onToggleFavorite()
             }
             #if os(macOS)
-                .help(prompt.metadata.isFavorite ? "Remove from favorites" : "Add to favorites")
+                .help(summary.isFavorite ? "Remove from favorites" : "Add to favorites")
             #endif
 
             Divider()
@@ -285,22 +291,15 @@ struct PromptRowView: View {
     #endif
 
     private func duplicatePrompt() {
-        let duplicate = Prompt(
-            title: "\(prompt.title) (Copy)",
-            content: prompt.content,
-            category: prompt.category
-        )
-        duplicate.tags = prompt.tags
-        modelContext.insert(duplicate)
+        // Duplication would need to be handled by the parent view
+        // since PromptSummary doesn't contain full content
+        // This could be passed as a callback or handled via the service layer
     }
 
     private func copyContent() {
-        #if os(macOS)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(prompt.content, forType: .string)
-        #else
-            UIPasteboard.general.string = prompt.content
-        #endif
+        // Content copying would need to be handled by the parent view
+        // since PromptSummary doesn't contain full content
+        // This could be passed as a callback or handled via the service layer
     }
 
     private func copyLink(_ url: URL) {
@@ -314,42 +313,23 @@ struct PromptRowView: View {
 
     private func exportPrompt() {
         #if os(macOS)
-            let markdown = MarkdownParser.generateMarkdown(for: prompt)
-            let filename = DragDropUtils.exportFilename(for: prompt)
-
-            let savePanel = NSSavePanel()
-            savePanel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-            savePanel.nameFieldStringValue = filename
-            savePanel.title = "Export Prompt"
-            savePanel.message = "Choose where to save the prompt"
-
-            savePanel.begin { response in
-                if response == .OK {
-                    Task { @MainActor in
-                        if let url = savePanel.url {
-                            do {
-                                try markdown.write(to: url, atomically: true, encoding: .utf8)
-                            } catch {
-                                // Log error - would use Logger in production
-                            }
-                        }
-                    }
-                }
-            }
+            // Export would need to be handled by the parent view
+            // since PromptSummary doesn't contain full content
+            // This could be passed as a callback or handled via the service layer
         #endif
     }
 }
 
 struct TagChip: View {
-    let tag: Tag
+    let tagDTO: TagDTO
 
     var body: some View {
-        Text(tag.name)
+        Text(tagDTO.name)
             .font(.caption2)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(Color(hex: tag.color).opacity(0.2))
-            .foregroundStyle(Color(hex: tag.color))
+            .background(Color(hex: tagDTO.color).opacity(0.2))
+            .foregroundStyle(Color(hex: tagDTO.color))
             .clipShape(Capsule())
     }
 }

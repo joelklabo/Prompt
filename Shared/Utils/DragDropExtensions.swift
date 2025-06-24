@@ -31,26 +31,96 @@ struct PromptDragModifier: ViewModifier {
     private func createItemProvider() -> NSItemProvider {
         let provider = NSItemProvider()
 
+        // Capture needed data upfront to avoid Sendable issues
+        let markdown = MarkdownParser.generateMarkdown(for: prompt)
+        let filename = DragDropUtils.exportFilename(for: prompt)
+
         // Register the prompt as draggable
         provider.registerDataRepresentation(
             forTypeIdentifier: UTType.plainText.identifier,
             visibility: .all
         ) { completion in
-            let markdown = MarkdownParser.generateMarkdown(for: prompt)
             let data = markdown.data(using: .utf8) ?? Data()
             completion(data, nil)
             return nil
         }
 
         // Register as file promise for exporting
-        let filename = DragDropUtils.exportFilename(for: prompt)
         provider.suggestedName = filename
 
         provider.registerFileRepresentation(
             forTypeIdentifier: UTType(filenameExtension: "md")?.identifier ?? UTType.plainText.identifier,
             fileOptions: [], visibility: .all
         ) { completion in
-            let markdown = MarkdownParser.generateMarkdown(for: prompt)
+
+            // Create temporary file
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(filename)
+
+            do {
+                try markdown.write(to: tempURL, atomically: true, encoding: .utf8)
+                completion(tempURL, true, nil)
+            } catch {
+                completion(nil, false, error)
+            }
+
+            return nil
+        }
+
+        return provider
+    }
+}
+
+// MARK: - Drag Modifier for exporting prompt details
+
+struct PromptDetailDragModifier: ViewModifier {
+    let promptDetail: PromptDetail
+
+    func body(content: Content) -> some View {
+        content
+            .draggable(promptDetail) {
+                // Drag preview
+                VStack(spacing: 4) {
+                    Image(systemName: "doc.text")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text(promptDetail.title)
+                        .font(.caption)
+                        .lineLimit(1)
+                }
+                .padding()
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .onDrag {
+                createItemProvider()
+            }
+    }
+
+    private func createItemProvider() -> NSItemProvider {
+        let provider = NSItemProvider()
+
+        // Capture needed data upfront to avoid Sendable issues
+        let markdown = MarkdownParser.generateMarkdown(for: promptDetail)
+        let filename = DragDropUtils.exportFilename(for: promptDetail)
+
+        // Register the prompt as draggable
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.plainText.identifier,
+            visibility: .all
+        ) { completion in
+            let data = markdown.data(using: .utf8) ?? Data()
+            completion(data, nil)
+            return nil
+        }
+
+        // Register as file promise for exporting
+        provider.suggestedName = filename
+
+        provider.registerFileRepresentation(
+            forTypeIdentifier: UTType(filenameExtension: "md")?.identifier ?? UTType.plainText.identifier,
+            fileOptions: [], visibility: .all
+        ) { completion in
 
             // Create temporary file
             let tempURL = FileManager.default.temporaryDirectory
@@ -79,6 +149,10 @@ extension View {
 
     func promptDraggable(_ prompt: Prompt) -> some View {
         modifier(PromptDragModifier(prompt: prompt))
+    }
+
+    func promptDraggable(_ promptDetail: PromptDetail) -> some View {
+        modifier(PromptDetailDragModifier(promptDetail: promptDetail))
     }
 }
 
@@ -126,6 +200,29 @@ extension Prompt: Transferable {
         FileRepresentation(exportedContentType: UTType(filenameExtension: "md") ?? .plainText) { prompt in
             let markdown = MarkdownParser.generateMarkdown(for: prompt)
             let filename = DragDropUtils.exportFilename(for: prompt)
+
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(filename)
+
+            try markdown.write(to: tempURL, atomically: true, encoding: .utf8)
+
+            return SentTransferredFile(tempURL)
+        }
+    }
+}
+
+// MARK: - PromptDetail Transferable Conformance
+
+extension PromptDetail: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .plainText) { promptDetail in
+            let markdown = MarkdownParser.generateMarkdown(for: promptDetail)
+            return markdown.data(using: .utf8) ?? Data()
+        }
+
+        FileRepresentation(exportedContentType: UTType(filenameExtension: "md") ?? .plainText) { promptDetail in
+            let markdown = MarkdownParser.generateMarkdown(for: promptDetail)
+            let filename = DragDropUtils.exportFilename(for: promptDetail)
 
             let tempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(filename)

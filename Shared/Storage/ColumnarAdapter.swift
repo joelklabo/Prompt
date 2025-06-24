@@ -235,9 +235,10 @@ struct PromptViewModel: Identifiable {
 
 // MARK: - Mach Time Helpers
 
-func mach_absolute_time() -> UInt64 {
+// Helper function to get nanoseconds from mach time
+func machTimeToNanoseconds() -> UInt64 {
     var info = mach_timebase_info_data_t()
     mach_timebase_info(&info)
-    let machTime = mach_absolute_time()
+    let machTime = Darwin.mach_absolute_time()  // Call the system function explicitly
     return machTime * UInt64(info.numer) / UInt64(info.denom)
 }

@@ -1,5 +1,5 @@
-import SwiftUI
 import os
+import SwiftUI
 
 struct MacContentViewWrapper: View {
     @State private var appState: AppState
@@ -47,8 +47,8 @@ struct MacContentViewWrapper: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .analyzeSelected)) { _ in
             Task {
-                if let selectedPrompt = appState.selectedPrompt {
-                    await appState.analyzePrompt(selectedPrompt)
+                if let selectedPromptID = appState.selectedPromptID {
+                    await appState.analyzePrompt(id: selectedPromptID)
                 }
             }
         }

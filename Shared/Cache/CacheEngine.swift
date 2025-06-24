@@ -5,7 +5,9 @@ import SwiftData
 
 /// High-performance caching engine inspired by John Carmack's approach to data locality and cache coherency
 /// All operations are designed to meet the <16ms frame time requirement
-actor CacheEngine {
+actor CacheEngine: ModelActor {
+    let modelContainer: ModelContainer
+    let modelExecutor: any ModelExecutor
     private let logger = Logger(subsystem: "com.prompt.app", category: "CacheEngine")
 
     // Sub-systems
@@ -23,6 +25,10 @@ actor CacheEngine {
     private var metrics = PerformanceMetrics()
 
     init(modelContainer: ModelContainer) async throws {
+        self.modelContainer = modelContainer
+        let context = ModelContext(modelContainer)
+        self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
+
         logger.info("Initializing CacheEngine with target frame time: 16ms")
 
         // Initialize sub-systems
@@ -87,7 +93,7 @@ actor CacheEngine {
     }
 
     /// Search with pre-built inverted index
-    func search(query: String, in prompts: [Prompt]) async -> [SearchResult] {
+    func search(query: String, in prompts: [PromptSummary]) async -> [SearchResult] {
         let startTime = CFAbsoluteTimeGetCurrent()
         defer {
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
@@ -103,7 +109,7 @@ actor CacheEngine {
     }
 
     /// Content-addressable storage for deduplication
-    func deduplicateContent(_ content: String) async -> ContentReference {
+    func deduplicateContent(_ content: String) async -> CASContentReference {
         return await contentStore.store(content)
     }
 
@@ -147,17 +153,18 @@ actor CacheEngine {
 
     private func preRenderAllMarkdown(modelContainer: ModelContainer) async {
         do {
-            let prompts = try await fetchAllPrompts(from: modelContainer)
+            // Fetch prompts and extract content within a single context
+            let contents = try await fetchPromptContents(from: modelContainer)
 
             await withTaskGroup(of: Void.self) { group in
-                for prompt in prompts {
+                for content in contents {
                     group.addTask { [weak self] in
-                        _ = await self?.getRenderedMarkdown(for: prompt.content)
+                        _ = await self?.getRenderedMarkdown(for: content)
                     }
                 }
             }
 
-            logger.info("Pre-rendered \(prompts.count) prompts")
+            logger.info("Pre-rendered \(contents.count) prompts")
         } catch {
             logger.error("Failed to pre-render markdown: \(error)")
         }
@@ -165,9 +172,10 @@ actor CacheEngine {
 
     private func buildSearchIndex(modelContainer: ModelContainer) async {
         do {
-            let prompts = try await fetchAllPrompts(from: modelContainer)
-            await textIndexer.buildIndex(for: prompts)
-            logger.info("Built search index for \(prompts.count) prompts")
+            // Convert prompts to summaries to avoid Sendable issues
+            let summaries = try await fetchPromptSummaries(from: modelContainer)
+            await textIndexer.buildIndex(for: summaries)
+            logger.info("Built search index for \(summaries.count) prompts")
         } catch {
             logger.error("Failed to build search index: \(error)")
         }
@@ -175,28 +183,36 @@ actor CacheEngine {
 
     private func computeAllStats(modelContainer: ModelContainer) async {
         do {
-            let prompts = try await fetchAllPrompts(from: modelContainer)
+            // Fetch prompt contents to avoid Sendable issues
+            let contents = try await fetchPromptContents(from: modelContainer)
 
             await withTaskGroup(of: Void.self) { group in
-                for prompt in prompts {
+                for content in contents {
                     group.addTask { [weak self] in
-                        _ = await self?.getTextStats(for: prompt.content)
+                        _ = await self?.getTextStats(for: content)
                     }
                 }
             }
 
-            logger.info("Computed statistics for \(prompts.count) prompts")
+            logger.info("Computed statistics for \(contents.count) prompts")
         } catch {
             logger.error("Failed to compute statistics: \(error)")
         }
     }
 
     private func fetchAllPrompts(from container: ModelContainer) async throws -> [Prompt] {
-        return try await MainActor.run {
-            let context = container.mainContext
-            let descriptor = FetchDescriptor<Prompt>()
-            return try context.fetch(descriptor)
-        }
+        let descriptor = FetchDescriptor<Prompt>()
+        return try modelContext.fetch(descriptor)
+    }
+
+    private func fetchPromptSummaries(from container: ModelContainer) async throws -> [PromptSummary] {
+        let prompts = try await fetchAllPrompts(from: container)
+        return prompts.map { $0.toSummary() }
+    }
+
+    private func fetchPromptContents(from container: ModelContainer) async throws -> [String] {
+        let prompts = try await fetchAllPrompts(from: container)
+        return prompts.map { $0.content }
     }
 
     // MARK: - Memory Management
@@ -326,10 +342,4 @@ struct UpdateToken: Sendable {
     let id: UUID
     let timestamp: Date
     let committed: Bool
-}
-
-struct ContentReference: Sendable {
-    let hash: String
-    let size: Int
-    let referenceCount: Int
 }

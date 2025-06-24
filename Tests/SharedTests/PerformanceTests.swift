@@ -2,7 +2,11 @@ import Foundation
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Performance Benchmarks")
 struct PerformanceTests {
@@ -58,18 +62,23 @@ struct PerformanceTests {
     }
 
     @Test("AI batch analysis performance")
+    @MainActor
     func aiBatchPerformance() async throws {
-        let prompts = try await MainActor.run {
-            var descriptor = FetchDescriptor<Prompt>()
-            descriptor.fetchLimit = 50
-            return try container.mainContext.fetch(descriptor)
-        }
-
-        let aiService = await MainActor.run { AIService() }
-
-        try await TestHelpers.measureTime(expectedDuration: .seconds(25)) {
-            _ = try await aiService.analyzeBatch(prompts)
-        }
+        // Fetch prompts
+        var descriptor = FetchDescriptor<Prompt>()
+        descriptor.fetchLimit = 50
+        let prompts = try container.mainContext.fetch(descriptor)
+        
+        // Create AIService
+        let aiService = AIService()
+        
+        // Since AIService methods are MainActor-isolated and return non-Sendable types,
+        // we'll test the time for the whole operation
+        let startTime = CFAbsoluteTimeGetCurrent()
+        _ = try await aiService.analyzeBatch(prompts)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        
+        #expect(elapsed < 25, "AI batch analysis should complete within 25 seconds")
     }
 
     @Test("Launch time measurement")
@@ -101,23 +110,24 @@ struct PerformanceTests {
 
         // Create multiple tags
         let tagNames = (0..<50).map { "perf-tag-\($0)" }
-        var tags: [Tag] = []
+        var tagIds: [UUID] = []
 
         let createStart = ContinuousClock.now
         for name in tagNames {
-            let tag = try await tagService.createTag(name: name)
-            tags.append(tag)
+            let tagDetail = try await tagService.createTag(TagCreateRequest(name: name, color: "#007AFF"))
+            tagIds.append(tagDetail.id)
         }
         let createDuration = createStart.duration(to: .now)
         #expect(createDuration < .seconds(2))
 
         // Add tags to prompts
-        let prompts = try await promptService.fetchPrompts().prefix(10)
+        let promptSummaries = try await promptService.fetchPromptSummaries()
+        let promptsToTag = Array(promptSummaries.prefix(10))
 
         let addStart = ContinuousClock.now
-        for prompt in prompts {
-            for tag in tags.prefix(5) {
-                try await promptService.addTag(tag, to: prompt)
+        for promptSummary in promptsToTag {
+            for tagId in tagIds.prefix(5) {
+                try await promptService.addTag(tagId: tagId, to: promptSummary.id)
             }
         }
         let addDuration = addStart.duration(to: .now)
@@ -125,7 +135,7 @@ struct PerformanceTests {
 
         // Fetch most used tags
         let fetchStart = ContinuousClock.now
-        let mostUsed = try await tagService.getMostUsedTags(limit: 10)
+        let mostUsed = try await tagService.getMostUsedTagSummaries(limit: 10)
         let fetchDuration = fetchStart.duration(to: .now)
         #expect(fetchDuration < .milliseconds(100))
         #expect(!mostUsed.isEmpty)
@@ -167,7 +177,10 @@ struct ResourceTests {
         // Create initial data
         let prompts = TestHelpers.createSamplePrompts(count: 100)
         for prompt in prompts {
-            try await promptService.savePrompt(prompt)
+            _ = prompt.id
+            let context = ModelContext(container)
+            context.insert(prompt)
+            try context.save()
         }
 
         // Perform concurrent operations
@@ -189,12 +202,12 @@ struct ResourceTests {
             // Concurrent creates
             for idx in 0..<5 {
                 group.addTask {
-                    let prompt = Prompt(
+                    let request = PromptCreateRequest(
                         title: "Concurrent \(idx)",
                         content: "Created concurrently",
                         category: .prompts
                     )
-                    try? await promptService.savePrompt(prompt)
+                    _ = try? await promptService.createPrompt(request)
                 }
             }
         }

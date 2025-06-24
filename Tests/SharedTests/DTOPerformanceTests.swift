@@ -3,7 +3,11 @@ import OSLog
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("DTO Performance Tests")
 struct DTOPerformanceTests {
@@ -38,7 +42,10 @@ struct DTOPerformanceTests {
             createdAt: Date(),
             modifiedAt: Date(),
             isFavorite: true,
-            viewCount: 42
+            viewCount: 42,
+            copyCount: 5,
+            categoryConfidence: 0.95,
+            shortLink: URL(string: "https://prompt.app/abc123")
         )
 
         // Measure memory size
@@ -240,7 +247,9 @@ struct DTOPerformanceTests {
 
             prompts.append(prompt)
 
-            try? await dataStore.insert(prompt)
+            let context = ModelContext(modelContainer)
+            context.insert(prompt)
+            try? context.save()
         }
 
         return prompts
@@ -278,7 +287,9 @@ struct DTOPerformanceTests {
             prompt.versions.append(version)
         }
 
-        try? await dataStore.insert(prompt)
+        let context = ModelContext(modelContainer)
+        context.insert(prompt)
+        try? context.save()
 
         return prompt
     }

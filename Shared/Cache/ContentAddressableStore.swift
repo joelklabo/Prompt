@@ -3,6 +3,14 @@ import CryptoKit
 import Foundation
 import os
 
+// MARK: - ContentReference for CAS
+
+struct CASContentReference: Sendable {
+    let hash: String
+    let size: Int
+    let referenceCount: Int
+}
+
 /// Content-addressable storage with deduplication and zero-copy operations
 /// Uses content hashing to eliminate duplicate storage and memory-mapped files for performance
 actor ContentAddressableStore {
@@ -22,7 +30,7 @@ actor ContentAddressableStore {
     private let compressionThreshold = 1024  // Compress content larger than 1KB
 
     // Statistics
-    private var stats = StorageStatistics()
+    private var stats = CASStorageStatistics()
 
     init() async throws {
         // Setup storage directory
@@ -40,7 +48,7 @@ actor ContentAddressableStore {
     // MARK: - Public API
 
     /// Store content and return reference (zero-copy when possible)
-    func store(_ content: String) async -> ContentReference {
+    func store(_ content: String) async -> CASContentReference {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Calculate content hash
@@ -53,7 +61,7 @@ actor ContentAddressableStore {
             referenceCount[hash] = existingCount + 1
             stats.deduplicatedBytes += size
 
-            return ContentReference(
+            return CASContentReference(
                 hash: hash,
                 size: size,
                 referenceCount: existingCount + 1
@@ -71,7 +79,7 @@ actor ContentAddressableStore {
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         logger.debug("Stored content in \(elapsed)ms, hash: \(hash)")
 
-        return ContentReference(
+        return CASContentReference(
             hash: hash,
             size: size,
             referenceCount: 1
@@ -79,7 +87,7 @@ actor ContentAddressableStore {
     }
 
     /// Retrieve content using zero-copy memory mapping
-    func retrieve(_ reference: ContentReference) async throws -> String {
+    func retrieve(_ reference: CASContentReference) async throws -> String {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Check memory-mapped cache first
@@ -109,7 +117,7 @@ actor ContentAddressableStore {
     }
 
     /// Release reference (for garbage collection)
-    func release(_ reference: ContentReference) async {
+    func release(_ reference: CASContentReference) async {
         guard let count = referenceCount[reference.hash] else { return }
 
         if count <= 1 {
@@ -137,7 +145,7 @@ actor ContentAddressableStore {
     }
 
     /// Get storage statistics
-    func getStatistics() async -> StorageStatistics {
+    func getStatistics() async -> CASStorageStatistics {
         return stats
     }
 
@@ -365,7 +373,7 @@ extension ContentAddressableStore {
 
 // MARK: - Storage Statistics
 
-struct StorageStatistics: Sendable {
+struct CASStorageStatistics: Sendable {
     var totalBytes: Int = 0
     var uniqueObjects: Int = 0
     var deduplicatedBytes: Int = 0

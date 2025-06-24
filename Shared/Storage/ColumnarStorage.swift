@@ -40,8 +40,9 @@ final class ColumnarStorage: @unchecked Sendable {
     private var categoryIndices: [UInt8: ContiguousArray<Int32>] = [:]
     private var sortedModifiedIndices: ContiguousArray<Int32> = []
 
-    /// Memory-mapped backing store
-    private var backingStore: MemoryMappedStore?
+    // Memory-mapped backing store
+    // TODO: Implement MemoryMappedStore when ready
+    // private var backingStore: MemoryMappedStore?
 
     /// Lock-free operations queue
     private let operationQueue = DispatchQueue(label: "columnar.ops", attributes: .concurrent)
@@ -55,9 +56,10 @@ final class ColumnarStorage: @unchecked Sendable {
     var isEmpty: Bool { ids.isEmpty }
 
     init(memoryMapped: Bool = true) {
-        if memoryMapped {
-            setupMemoryMapping()
-        }
+        // TODO: Enable memory mapping when MemoryMappedStore is implemented
+        // if memoryMapped {
+        //     setupMemoryMapping()
+        // }
     }
 
     // MARK: - Core Operations
@@ -79,8 +81,9 @@ final class ColumnarStorage: @unchecked Sendable {
 
             // Append to columns
             ids.append(id)
-            let titleIndex = titles.intern(title)
-            contents.append(content)
+            _ = titles.intern(title)
+            // TODO: Make this async when CompressedTextStorage is integrated
+            // contents.append(content)
             createdTimestamps.append(createdAt.timeIntervalSince1970)
             modifiedTimestamps.append(modifiedAt.timeIntervalSince1970)
 
@@ -116,7 +119,8 @@ final class ColumnarStorage: @unchecked Sendable {
         return PromptData(
             id: ids[idx],
             title: titles.resolve(at: idx) ?? "",
-            content: contents.decompress(at: idx),
+            // TODO: Make this async when CompressedTextStorage is integrated
+            content: "",  // contents.decompress(at: idx),
             category: Category(rawBits: categoryBits[idx]),
             createdAt: Date(timeIntervalSince1970: createdTimestamps[idx]),
             modifiedAt: Date(timeIntervalSince1970: modifiedTimestamps[idx]),
@@ -138,8 +142,9 @@ final class ColumnarStorage: @unchecked Sendable {
         // SIMD-accelerated title search
         let titleMatches = titles.vectorizedSearch(query: queryLower)
 
-        // Parallel content search with threading
-        let contentMatches = contents.parallelSearch(query: queryLower)
+        // TODO: Make this async when CompressedTextStorage is integrated
+        // let contentMatches = await contents.parallelSearch(query: queryLower)
+        let contentMatches = Set<Int>()
 
         // Merge results without allocation
         results.reserveCapacity(titleMatches.count + contentMatches.count)
@@ -179,7 +184,8 @@ final class ColumnarStorage: @unchecked Sendable {
             }
 
             if let content = content {
-                contents.update(at: idx, with: content)
+                // TODO: Make this async when CompressedTextStorage is integrated
+                // contents.update(at: idx, with: content)
             }
 
             // Update modified timestamp
@@ -222,7 +228,8 @@ final class ColumnarStorage: @unchecked Sendable {
 
                 ids.append(item.id)
                 _ = titles.intern(item.title)
-                contents.append(item.content)
+                // TODO: Make this async when CompressedTextStorage is integrated
+                // contents.append(item.content)
                 createdTimestamps.append(now)
                 modifiedTimestamps.append(now)
                 categoryBits.append(item.category.rawBits)
@@ -262,7 +269,8 @@ final class ColumnarStorage: @unchecked Sendable {
             contextCount: Int(categoryCounts[3]),
             favoriteCount: favoriteCount,
             totalTags: tagPool.count,
-            averageContentSize: contents.averageSize()
+            // TODO: Make this async when CompressedTextStorage is integrated
+            averageContentSize: 0  // contents.averageSize()
         )
     }
 
@@ -290,10 +298,11 @@ final class ColumnarStorage: @unchecked Sendable {
 
 extension ColumnarStorage {
     private func setupMemoryMapping() {
+        // TODO: Implement memory mapping when MemoryMappedStore is available
         // Setup memory-mapped file for persistence
-        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("promptbank_columnar.dat")
-        backingStore = MemoryMappedStore(url: url)
+        // let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        //     .appendingPathComponent("promptbank_columnar.dat")
+        // backingStore = MemoryMappedStore(url: url)
     }
 
     private func insertIntoSortedModified(_ index: Int32) {
@@ -376,11 +385,11 @@ struct VersionRange {
 
 extension VersionRange {
     var isEmpty: Bool {
-        count <= 0
+        count == 0
     }
 
     var isValid: Bool {
-        start >= 0 && count > 0
+        start >= 0 && !isEmpty
     }
 }
 

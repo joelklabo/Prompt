@@ -301,12 +301,16 @@ private actor AsyncSemaphore {
     private var count: Int
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
+    var isEmpty: Bool {
+        count == 0
+    }
+
     init(limit: Int) {
         self.count = limit
     }
 
     func wait() async {
-        if count > 0 {
+        if !isEmpty {
             count -= 1
             return
         }

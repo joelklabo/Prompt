@@ -2,7 +2,11 @@ import Foundation
 import OSLog
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 // MARK: - Stress Tests and Comparisons
 
@@ -16,7 +20,12 @@ extension ColumnarBenchmarks {
         // Insert benchmark
         let columnarInsertTime = await measureNanoTime {
             let prepared = testData.map { data in
-                (UUID(), data.title, data.content, data.category)
+                ColumnarStorage.BatchItem(
+                    id: UUID(),
+                    title: data.title,
+                    content: data.content,
+                    category: data.category
+                )
             }
             columnar.batchInsert(prepared)
         }
@@ -31,16 +40,16 @@ extension ColumnarBenchmarks {
             _ = columnar.filterByCategory(.prompts)
         }
 
-        Self.logger.info("\nColumnar Storage Performance:")
-        Self.logger.info("- Insert 1000: \(Double(columnarInsertTime) / 1_000_000)ms")
-        Self.logger.info("- Search: \(Double(columnarSearchTime) / 1_000_000)ms")
-        Self.logger.info("- Filter: \(Double(columnarFilterTime) / 1_000)µs")
+        ColumnarBenchmarks.logger.info("\nColumnar Storage Performance:")
+        ColumnarBenchmarks.logger.info("- Insert 1000: \(Double(columnarInsertTime) / 1_000_000)ms")
+        ColumnarBenchmarks.logger.info("- Search: \(Double(columnarSearchTime) / 1_000_000)ms")
+        ColumnarBenchmarks.logger.info("- Filter: \(Double(columnarFilterTime) / 1_000)µs")
 
         // Note: In production, would compare against actual SwiftData implementation
-        Self.logger.info("\nExpected SwiftData Performance (estimated):")
-        Self.logger.info("- Insert 1000: ~50-100ms (50-100x slower)")
-        Self.logger.info("- Search: ~10-20ms (100-200x slower)")
-        Self.logger.info("- Filter: ~5-10ms (5000-10000x slower)")
+        ColumnarBenchmarks.logger.info("\nExpected SwiftData Performance (estimated):")
+        ColumnarBenchmarks.logger.info("- Insert 1000: ~50-100ms (50-100x slower)")
+        ColumnarBenchmarks.logger.info("- Search: ~10-20ms (100-200x slower)")
+        ColumnarBenchmarks.logger.info("- Filter: ~5-10ms (5000-10000x slower)")
     }
 
     @Test("Concurrent access stress test")
@@ -50,7 +59,12 @@ extension ColumnarBenchmarks {
         // Pre-populate
         let testData = Self.generateTestPrompts(count: 10_000)
         let prepared = testData.map { data in
-            (UUID(), data.title, data.content, data.category)
+            ColumnarStorage.BatchItem(
+                id: UUID(),
+                title: data.title,
+                content: data.content,
+                category: data.category
+            )
         }
         storage.batchInsert(prepared)
 
@@ -90,7 +104,7 @@ extension ColumnarBenchmarks {
             }
         }
 
-        Self.logger.info("Concurrent stress test completed successfully")
+        ColumnarBenchmarks.logger.info("Concurrent stress test completed successfully")
     }
 }
 

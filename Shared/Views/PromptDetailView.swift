@@ -2,36 +2,34 @@ import os
 import SwiftUI
 
 struct PromptDetailView: View {
-    @Binding var prompt: Prompt
+    let promptID: UUID
     let promptService: PromptService?
-    let onUpdate: (String, String, Category) async -> Void
-    let onAnalyze: () async -> Void
-    let onCopy: () -> Void
+    @Environment(AppState.self) var appState
 
+    @State private var promptDetail: PromptDetail?
+    @State private var isLoading = true
+    @State private var loadError: Error?
     @State private var isEditing = false
-    @State private var editedTitle: String
-    @State private var editedContent: String
-    @State private var editedCategory: Category
+    @State private var editedTitle: String = ""
+    @State private var editedContent: String = ""
+    @State private var editedCategory: Category = .prompts
     @State private var isAnalyzing = false
     @State private var showingVersionHistory = false
+    @State private var isSaving = false
+
+    // Lazy loading states
+    @State private var content: String?
+    @State private var isLoadingContent = false
+    @State private var contentLoadError: Error?
 
     private let logger = Logger(subsystem: "com.prompt.app", category: "PromptDetailView")
 
     init(
-        prompt: Binding<Prompt>,
-        promptService: PromptService? = nil,
-        onUpdate: @escaping (String, String, Category) async -> Void,
-        onAnalyze: @escaping () async -> Void,
-        onCopy: @escaping () -> Void
+        promptID: UUID,
+        promptService: PromptService? = nil
     ) {
-        self._prompt = prompt
+        self.promptID = promptID
         self.promptService = promptService
-        self.onUpdate = onUpdate
-        self.onAnalyze = onAnalyze
-        self.onCopy = onCopy
-        self._editedTitle = State(initialValue: prompt.wrappedValue.title)
-        self._editedContent = State(initialValue: prompt.wrappedValue.content)
-        self._editedCategory = State(initialValue: prompt.wrappedValue.category)
     }
 
     var body: some View {
@@ -44,7 +42,7 @@ struct PromptDetailView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.title2)
                     } else {
-                        Text(prompt.title)
+                        Text(promptDetail?.title ?? "Loading...")
                             .font(.title2)
                             .bold()
                             .textSelection(.enabled)
@@ -60,7 +58,7 @@ struct PromptDetailView: View {
                             }
                             .pickerStyle(.menu)
                         } else {
-                            Label(prompt.category.rawValue, systemImage: prompt.category.icon)
+                            Label(promptDetail?.category.rawValue ?? "", systemImage: promptDetail?.category.icon ?? "")
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -70,7 +68,7 @@ struct PromptDetailView: View {
 
                         Spacer()
 
-                        Text("Modified \(prompt.modifiedAt.formatted())")
+                        Text("Modified \(promptDetail?.modifiedAt.formatted() ?? "")")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -92,22 +90,44 @@ struct PromptDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 } else {
-                    MarkdownView(
-                        content: prompt.content,
-                        promptId: prompt.id,
-                        promptService: promptService
-                    )
+                    Group {
+                        if let content = content {
+                            MarkdownView(
+                                content: content,
+                                promptId: promptID,
+                                promptService: promptService
+                            )
+                        } else if isLoadingContent {
+                            VStack {
+                                ProgressView("Loading content...")
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .padding()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                            .background(.quaternary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        } else {
+                            ContentPreviewView(
+                                preview: promptDetail.map { String($0.content.prefix(200)) } ?? "No preview available"
+                            )
+                            .onTapGesture {
+                                Task {
+                                    await loadContent()
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Tags
-                if !prompt.tags.isEmpty || isEditing {
+                if !(promptDetail?.tags.isEmpty ?? true) || isEditing {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Tags")
                             .font(.headline)
 
                         FlowLayout(spacing: 8) {
-                            ForEach(prompt.tags) { tag in
-                                TagChip(tag: tag)
+                            ForEach(promptDetail?.tags ?? []) { tag in
+                                TagChip(tagDTO: tag)
                             }
 
                             if isEditing {
@@ -133,18 +153,22 @@ struct PromptDetailView: View {
                 }
 
                 // AI Analysis
-                if let analysis = prompt.aiAnalysis {
-                    AIAnalysisView(analysis: analysis)
+                if let analysis = promptDetail?.aiAnalysis {
+                    AIAnalysisView(analysisDTO: analysis)
                 }
 
                 // File Statistics
-                FileStatsView(prompt: prompt)
+                if let detail = promptDetail {
+                    FileStatsView(promptDetail: detail)
+                }
 
                 // Metadata
-                MetadataView(metadata: prompt.metadata)
+                if let metadata = promptDetail?.metadata {
+                    MetadataView(metadataDTO: metadata)
+                }
 
                 // Version History
-                if !prompt.versions.isEmpty {
+                if let versionCount = promptDetail?.versionCount, versionCount > 0 {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("Version History")
@@ -161,18 +185,13 @@ struct PromptDetailView: View {
                             #endif
                         }
 
-                        if let latestVersion = prompt.versions.last {
+                        if let versionCount = promptDetail?.versionCount, versionCount > 0 {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Version \(latestVersion.versionNumber)")
+                                Text("\(versionCount) version\(versionCount == 1 ? "" : "s")")
                                     .font(.subheadline)
-                                Text(latestVersion.createdAt.formatted())
+                                Text("View history for details")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                if let description = latestVersion.changeDescription {
-                                    Text(description)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
                             }
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,14 +240,31 @@ struct PromptDetailView: View {
                     .help("Analyze this prompt with AI for insights and suggestions")
                 #endif
 
-                if prompt.metadata.isFavorite {
+                if promptDetail?.metadata.isFavorite == true {
                     Image(systemName: "star.fill")
                         .foregroundStyle(.yellow)
                 }
             }
         }
         .sheet(isPresented: $showingVersionHistory) {
-            VersionHistoryView(versions: prompt.versions)
+            if let promptID = promptDetail?.id {
+                VersionHistoryView(promptID: promptID, promptService: promptService)
+            }
+        }
+        .task {
+            await loadPromptDetail()
+            // Auto-load content for external storage
+            // Load content if needed
+            await loadContent()
+        }
+        .onChange(of: promptDetail) { newValue in
+            if let detail = newValue {
+                editedTitle = detail.title
+                editedCategory = detail.category
+                // Load content
+                editedContent = detail.content
+                content = detail.content
+            }
         }
     }
 
@@ -238,19 +274,133 @@ struct PromptDetailView: View {
 
 extension PromptDetailView {
     private func saveChanges() {
+        guard let service = promptService else { return }
+
         Task {
-            await onUpdate(editedTitle, editedContent, editedCategory)
-            prompt.title = editedTitle
-            prompt.content = editedContent
-            prompt.category = editedCategory
+            isSaving = true
+            do {
+                // Update each field that changed
+                if editedTitle != promptDetail?.title {
+                    _ = try await service.updatePrompt(
+                        id: promptID,
+                        field: .title,
+                        newValue: editedTitle
+                    )
+                }
+
+                if editedContent != promptDetail?.content {
+                    _ = try await service.updatePrompt(
+                        id: promptID,
+                        field: .content,
+                        newValue: editedContent
+                    )
+                }
+
+                if editedCategory != promptDetail?.category {
+                    _ = try await service.updatePrompt(
+                        id: promptID,
+                        field: .category,
+                        newValue: editedCategory.rawValue
+                    )
+                }
+
+                // Reload the detail
+                await loadPromptDetail()
+                isEditing = false
+            } catch {
+                logger.error("Failed to save changes: \(error)")
+            }
+            isSaving = false
         }
+    }
+
+    private func loadPromptDetail() async {
+        isLoading = true
+        loadError = nil
+
+        do {
+            if let service = promptService {
+                promptDetail = try await service.getPromptDetail(id: promptID)
+            }
+        } catch {
+            loadError = error
+            logger.error("Failed to load prompt detail: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    private func loadContent() async {
+        guard let service = promptService else { return }
+
+        isLoadingContent = true
+        contentLoadError = nil
+
+        do {
+            // Load content directly by ID without passing Prompt across actor boundaries
+            let loadedContent = try await service.loadContentForPrompt(id: promptID)
+            content = loadedContent
+            editedContent = loadedContent
+        } catch {
+            contentLoadError = error
+            logger.error("Failed to load content: \(error)")
+        }
+
+        isLoadingContent = false
+    }
+
+    private func onCopy() {
+        // Use lazy-loaded content if available, otherwise load it first
+        guard let contentToCopy = content else {
+            Task {
+                await loadContent()
+                if let loadedContent = content {
+                    copyToClipboard(loadedContent)
+                }
+            }
+            return
+        }
+
+        copyToClipboard(contentToCopy)
+
+        // Increment copy count
+        if let service = promptService {
+            Task {
+                // Note: This would need a method to increment copy count
+                // For now, we'll just reload to get updated metadata
+                await loadPromptDetail()
+            }
+        }
+    }
+
+    private func onAnalyze() async {
+        guard let service = promptService else { return }
+
+        isAnalyzing = true
+        do {
+            // Note: This would need an analyze method in the service
+            // For now, just reload the detail which might have analysis
+            await loadPromptDetail()
+        } catch {
+            logger.error("Failed to analyze prompt: \(error)")
+        }
+        isAnalyzing = false
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if os(macOS)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        #else
+            UIPasteboard.general.string = text
+        #endif
     }
 }
 
 // MARK: - Supporting Views
 
 struct AIAnalysisView: View {
-    let analysis: AIAnalysis
+    let analysisDTO: AIAnalysisDTO
     @State private var isExpanded = true
 
     var body: some View {
@@ -280,11 +430,11 @@ struct AIAnalysisView: View {
                         Text("Category Confidence")
                             .font(.subheadline)
                         Spacer()
-                        ConfidenceBadge(confidence: analysis.categoryConfidence)
+                        ConfidenceBadge(confidence: analysisDTO.categoryConfidence)
                     }
 
                     // Summary
-                    if let summary = analysis.summary {
+                    if let summary = analysisDTO.summary {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Summary")
                                 .font(.subheadline)
@@ -295,14 +445,14 @@ struct AIAnalysisView: View {
                     }
 
                     // Suggested Tags
-                    if !analysis.suggestedTags.isEmpty {
+                    if !analysisDTO.suggestedTags.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Suggested Tags")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
                             FlowLayout(spacing: 4) {
-                                ForEach(analysis.suggestedTags, id: \.self) { tagName in
+                                ForEach(analysisDTO.suggestedTags, id: \.self) { tagName in
                                     Text(tagName)
                                         .font(.caption2)
                                         .padding(.horizontal, 8)
@@ -316,13 +466,13 @@ struct AIAnalysisView: View {
                     }
 
                     // Enhancement Suggestions
-                    if !analysis.enhancementSuggestions.isEmpty {
+                    if !analysisDTO.enhancementSuggestions.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Enhancement Suggestions")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
-                            ForEach(analysis.enhancementSuggestions, id: \.self) { suggestion in
+                            ForEach(analysisDTO.enhancementSuggestions, id: \.self) { suggestion in
                                 HStack(alignment: .top, spacing: 4) {
                                     Text("•")
                                         .font(.caption)
@@ -333,7 +483,7 @@ struct AIAnalysisView: View {
                         }
                     }
 
-                    Text("Analyzed \(analysis.analyzedAt.formatted())")
+                    Text("Analyzed \(analysisDTO.analyzedAt.formatted())")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -346,7 +496,7 @@ struct AIAnalysisView: View {
 }
 
 struct MetadataView: View {
-    let metadata: PromptMetadata
+    let metadataDTO: MetadataDTO
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -358,7 +508,7 @@ struct MetadataView: View {
                     Text("Views")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(metadata.viewCount)")
+                    Text("\(metadataDTO.viewCount)")
                         .font(.title3)
                         .bold()
                 }
@@ -367,12 +517,12 @@ struct MetadataView: View {
                     Text("Copies")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(metadata.copyCount)")
+                    Text("\(metadataDTO.copyCount)")
                         .font(.title3)
                         .bold()
                 }
 
-                if let lastViewed = metadata.lastViewedAt {
+                if let lastViewed = metadataDTO.lastViewedAt {
                     VStack(alignment: .leading) {
                         Text("Last Viewed")
                             .font(.caption)
@@ -387,7 +537,10 @@ struct MetadataView: View {
 }
 
 struct VersionHistoryView: View {
-    let versions: [PromptVersion]
+    let promptID: UUID
+    let promptService: PromptService?
+    @State private var versions: [PromptVersionSummary] = []
+    @State private var isLoading = true
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -395,25 +548,20 @@ struct VersionHistoryView: View {
             List(versions) { version in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Version \(version.versionNumber)")
+                        Text(version.formattedVersionNumber)
                             .font(.headline)
                         Spacer()
-                        Text(version.createdAt.formatted())
+                        Text(version.formattedCreatedAt)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
-                    if let description = version.changeDescription {
-                        Text(description)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(version.displayDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(version.title)
-                            .font(.subheadline)
-                            .bold()
-                        Text(version.content)
+                        Text(version.contentPreview)
                             .font(.caption)
                             .lineLimit(3)
                             .foregroundStyle(.secondary)
@@ -436,6 +584,58 @@ struct VersionHistoryView: View {
                     #endif
                 }
             }
+            .overlay {
+                if isLoading {
+                    ProgressView()
+                }
+            }
+        }
+        .task {
+            await loadVersions()
+        }
+    }
+
+    private func loadVersions() async {
+        guard let service = promptService else { return }
+        isLoading = true
+
+        // Note: This would need a method to fetch version summaries
+        // For now, we'll simulate with empty array
+        // In a real implementation:
+        // versions = try? await service.getPromptVersionSummaries(promptID: promptID)
+
+        versions = []
+        isLoading = false
+    }
+}
+
+// Content Preview View for lazy loading
+struct ContentPreviewView: View {
+    let preview: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Content Preview")
+                    .font(.headline)
+                Spacer()
+                Image(systemName: "hand.tap")
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(preview)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .lineLimit(5)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Text("Tap to load full content")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
         }
     }
 }

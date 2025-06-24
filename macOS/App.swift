@@ -18,8 +18,7 @@ struct PromptMacApp: App {
 
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
-                isStoredInMemoryOnly: false,
-                cloudKitDatabase: .automatic
+                isStoredInMemoryOnly: false
             )
 
             self.modelContainer = try ModelContainer(
@@ -27,6 +26,7 @@ struct PromptMacApp: App {
                 configurations: [modelConfiguration]
             )
 
+            // Start with SwiftData storage, hybrid storage can be added later
             let promptService = PromptService(container: modelContainer)
             let tagService = TagService(container: modelContainer)
             let aiService = AIService()
@@ -96,6 +96,27 @@ struct PromptCommands: Commands {
             .keyboardShortcut("i", modifiers: [.command])
             .help("Import prompts from files (⌘I)")
         }
+
+        #if DEBUG
+            CommandMenu("Development") {
+                Button("Populate Test Data") {
+                    NotificationCenter.default.post(name: .populateTestData, object: nil)
+                }
+                .help("Create test prompts for performance testing")
+
+                Button("Clear All Data") {
+                    NotificationCenter.default.post(name: .clearAllData, object: nil)
+                }
+                .help("Delete all prompts and start fresh")
+
+                Divider()
+
+                Button("Show Performance Stats") {
+                    NotificationCenter.default.post(name: .showPerformanceStats, object: nil)
+                }
+                .help("Show app performance metrics")
+            }
+        #endif
     }
 }
 

@@ -139,8 +139,8 @@ final class StatsComputer: @unchecked Sendable {
         var space = UInt8(0x20)  // Space
         var newline = UInt8(0x0A)  // \n
         var period = UInt8(0x2E)  // .
-        let exclaim = UInt8(0x21)  // !
-        let question = UInt8(0x3F)  // ?
+        _ = UInt8(0x21)  // ! (exclaim)
+        _ = UInt8(0x3F)  // ? (question)
 
         // Load 64 bytes into SIMD registers
         utf8.withUnsafeBufferPointer { buffer in

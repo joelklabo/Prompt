@@ -1,10 +1,13 @@
 import Foundation
 
-enum PromptError: LocalizedError {
+enum PromptError: LocalizedError, Sendable {
     case notFound(UUID)
     case invalidContent(reason: String)
-    case syncConflict(local: Prompt, remote: Prompt)
+    case syncConflict(localID: UUID, remoteID: UUID)
     case quotaExceeded(limit: Int)
+    case invalidRequest
+    case invalidCategory(String)
+    case tagNotFound(UUID)
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +19,12 @@ enum PromptError: LocalizedError {
             return "Sync conflict detected"
         case .quotaExceeded(let limit):
             return "Prompt limit exceeded (max: \(limit))"
+        case .invalidRequest:
+            return "Invalid request parameters"
+        case .invalidCategory(let category):
+            return "Invalid category: \(category)"
+        case .tagNotFound(let id):
+            return "Tag with ID \(id) not found"
         }
     }
 
@@ -29,6 +38,40 @@ enum PromptError: LocalizedError {
             return "Choose which version to keep"
         case .quotaExceeded:
             return "Delete some prompts or upgrade your plan"
+        case .invalidRequest:
+            return "Please provide valid request parameters"
+        case .invalidCategory:
+            return "Choose from: Prompts, Configs, Commands, or Context"
+        case .tagNotFound:
+            return "The tag may have been deleted"
+        }
+    }
+}
+
+enum TagError: LocalizedError, Sendable {
+    case notFound(UUID)
+    case invalidRequest
+    case duplicateName(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notFound(let id):
+            return "Tag with ID \(id) not found"
+        case .invalidRequest:
+            return "Invalid request parameters"
+        case .duplicateName(let name):
+            return "Tag with name '\(name)' already exists"
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .notFound:
+            return "The tag may have been deleted"
+        case .invalidRequest:
+            return "Please provide valid request parameters"
+        case .duplicateName:
+            return "Choose a different tag name"
         }
     }
 }

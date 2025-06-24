@@ -2,7 +2,11 @@ import Foundation
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Prompt Management")
 struct PromptManagementTests {

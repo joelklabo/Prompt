@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import os.log
 import SwiftData
@@ -26,6 +27,9 @@ actor PromptMigrationService {
         // Step 3: Optimize large content storage
         try await optimizeLargeContent()
 
+        // Step 4: Populate hybrid storage fields
+        try await populateHybridStorageFields()
+
         logger.info("Incremental migration completed")
     }
 
@@ -37,27 +41,33 @@ actor PromptMigrationService {
         // trigger index creation through strategic queries
 
         // Index on modifiedAt for pagination
-        var descriptor = FetchDescriptor<Prompt>(
-            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-        _ = try await dataStore.fetch(descriptor)
+        try await dataStore.transaction { context in
+            var descriptor = FetchDescriptor<Prompt>(
+                sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+            _ = try context.fetch(descriptor)
+        }
 
         // Index on category for filtering
         for category in Category.allCases {
-            var categoryDescriptor = FetchDescriptor<Prompt>(
-                predicate: #Predicate { $0.category == category }
-            )
-            categoryDescriptor.fetchLimit = 1
-            _ = try await dataStore.fetch(categoryDescriptor)
+            try await dataStore.transaction { context in
+                var categoryDescriptor = FetchDescriptor<Prompt>(
+                    predicate: #Predicate { $0.category == category }
+                )
+                categoryDescriptor.fetchLimit = 1
+                _ = try context.fetch(categoryDescriptor)
+            }
         }
 
         // Index on isFavorite
-        var favoriteDescriptor = FetchDescriptor<Prompt>(
-            predicate: #Predicate { $0.metadata.isFavorite == true }
-        )
-        favoriteDescriptor.fetchLimit = 1
-        _ = try await dataStore.fetch(favoriteDescriptor)
+        try await dataStore.transaction { context in
+            var favoriteDescriptor = FetchDescriptor<Prompt>(
+                predicate: #Predicate { $0.metadata.isFavorite == true }
+            )
+            favoriteDescriptor.fetchLimit = 1
+            _ = try context.fetch(favoriteDescriptor)
+        }
     }
 
     /// Optimize storage for large content
@@ -68,21 +78,88 @@ actor PromptMigrationService {
 
         // Find prompts with large content
         let descriptor = FetchDescriptor<Prompt>()
-        let allPrompts = try await dataStore.fetch(descriptor)
+        let promptCount = try await dataStore.count(for: descriptor)
 
-        var optimizedCount = 0
+        // Process in batches to avoid loading all at once
+        let batchSize = 100
+        for offset in stride(from: 0, to: promptCount, by: batchSize) {
+            var batchDescriptor = descriptor
+            batchDescriptor.fetchLimit = batchSize
+            batchDescriptor.fetchOffset = offset
 
-        for prompt in allPrompts where prompt.content.utf8.count > largeContentThreshold {
-            // In a real implementation, we would:
-            // 1. Move content to file storage
-            // 2. Update prompt with file reference
-            // 3. Clear in-memory content
+            let optimizedCount = try await dataStore.transaction { context in
+                let prompts = try context.fetch(batchDescriptor)
 
-            // For now, just count
-            optimizedCount += 1
+                var count = 0
+                for prompt in prompts where prompt.content.utf8.count > largeContentThreshold {
+                    // In a real implementation, we would:
+                    // 1. Move content to file storage
+                    // 2. Update prompt with file reference
+                    // 3. Clear in-memory content
+                    count += 1
+                }
+                return count
+            }
+
+            if optimizedCount > 0 {
+                logger.info("Optimized \(optimizedCount) prompts in batch")
+            }
+        }
+    }
+
+    /// Populate new hybrid storage fields for existing prompts
+    private func populateHybridStorageFields() async throws {
+        logger.info("Populating hybrid storage fields for existing prompts")
+
+        let descriptor = FetchDescriptor<Prompt>()
+        let promptCount = try await dataStore.count(for: descriptor)
+
+        // Process in batches
+        let batchSize = 100
+        var totalMigrated = 0
+
+        for offset in stride(from: 0, to: promptCount, by: batchSize) {
+            var batchDescriptor = descriptor
+            batchDescriptor.fetchLimit = batchSize
+            batchDescriptor.fetchOffset = offset
+
+            let migratedInBatch = try await dataStore.transaction { context in
+                let prompts = try context.fetch(batchDescriptor)
+                var count = 0
+
+                for prompt in prompts {
+                    // Skip if already migrated
+                    if prompt.contentSize > 0 && !prompt.contentPreview.isEmpty {
+                        continue
+                    }
+
+                    // Populate content size
+                    prompt.contentSize = prompt.content.utf8.count
+
+                    // Populate content preview (first 200 characters)
+                    prompt.contentPreview = String(prompt.content.prefix(200))
+
+                    // Set storage type (default to swiftData for existing prompts)
+                    prompt.storageType = .swiftData
+
+                    // Generate content hash
+                    let contentData = Data(prompt.content.utf8)
+                    let hash = SHA256.hash(data: contentData)
+                    prompt.contentHash = hash.compactMap { String(format: "%02x", $0) }.joined()
+
+                    count += 1
+                }
+
+                return count
+            }
+
+            totalMigrated += migratedInBatch
+            if migratedInBatch > 0 {
+                logger.info("Migrated \(migratedInBatch) prompts in batch")
+            }
         }
 
-        logger.info("Identified \(optimizedCount) prompts with large content")
+        logger.info("Completed populating hybrid storage fields for \(totalMigrated) prompts")
     }
 }
 
@@ -93,13 +170,16 @@ extension Prompt {
         PromptSummary(
             id: id,
             title: title,
-            contentPreview: String(content.prefix(100)),
+            contentPreview: contentPreview.isEmpty ? String(content.prefix(200)) : contentPreview,
             category: category,
             tagNames: tags.map(\.name),
             createdAt: createdAt,
             modifiedAt: modifiedAt,
             isFavorite: metadata.isFavorite,
-            viewCount: Int16(min(metadata.viewCount, Int(Int16.max)))
+            viewCount: Int16(min(metadata.viewCount, Int(Int16.max))),
+            copyCount: Int16(min(metadata.copyCount, Int(Int16.max))),
+            categoryConfidence: aiAnalysis?.categoryConfidence,
+            shortLink: metadata.shortCode.flatMap { URL(string: "https://prompt.app/\($0)") }
         )
     }
 

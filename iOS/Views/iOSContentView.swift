@@ -12,24 +12,29 @@ struct IOSContentView: View {
             )
         ) {
             PromptListView(
-                prompts: appState.displayedPrompts.compactMap { item in
-                    // Convert lightweight items to full prompts temporarily
-                    let prompt = Prompt(
+                promptSummaries: appState.displayedPrompts.map { item in
+                    // Convert lightweight items to PromptSummary
+                    PromptSummary(
+                        id: item.id,
                         title: item.title,
-                        content: item.contentPreview,
-                        category: item.category
+                        contentPreview: item.contentPreview,
+                        category: item.category,
+                        tagNames: [],
+                        createdAt: item.modifiedAt,  // Using modifiedAt as createdAt is not available
+                        modifiedAt: item.modifiedAt,
+                        isFavorite: item.isFavorite,
+                        viewCount: 0,
+                        copyCount: 0,
+                        categoryConfidence: nil,
+                        shortLink: nil
                     )
-                    prompt.id = item.id
-                    prompt.modifiedAt = item.modifiedAt
-                    prompt.metadata.isFavorite = item.isFavorite
-                    return prompt
                 },
-                selectedPrompt: .constant(nil),
-                onDelete: { prompt in
-                    await appState.deletePromptById(prompt.id)
+                selectedPromptID: .constant(nil),
+                onDelete: { promptID in
+                    await appState.deletePromptById(promptID)
                 },
-                onToggleFavorite: { prompt in
-                    await appState.toggleFavorite(for: prompt.id)
+                onToggleFavorite: { promptID in
+                    await appState.toggleFavorite(for: promptID)
                 },
                 onLoadMore: {
                     await appState.loadMorePrompts()
@@ -38,28 +43,12 @@ struct IOSContentView: View {
                 isLoadingMore: appState.isLoadingMore
             )
             .navigationTitle("Prompts")
-            .navigationDestination(for: Prompt.self) { prompt in
+            .navigationDestination(for: UUID.self) { promptID in
                 PromptDetailView(
-                    prompt: Binding(
-                        get: { prompt },
-                        set: { _ in }
-                    ),
-                    promptService: appState.promptService,
-                    onUpdate: { title, content, category in
-                        await appState.updatePrompt(
-                            prompt,
-                            title: title,
-                            content: content,
-                            category: category
-                        )
-                    },
-                    onAnalyze: {
-                        await appState.analyzePrompt(prompt)
-                    },
-                    onCopy: {
-                        appState.copyPromptContent(prompt)
-                    }
+                    promptID: promptID,
+                    promptService: appState.promptService
                 )
+                .environment(appState)
             }
             .searchable(
                 text: Binding(

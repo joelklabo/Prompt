@@ -117,7 +117,7 @@ struct OptimizedContentView: View {
     private var promptListView: some View {
         List(enhancedPrompts, id: \.prompt.id) { enhanced in
             PromptRowView(
-                prompt: enhanced.prompt,
+                summary: enhanced.prompt.toSummary(),
                 isSelected: selectedPrompt?.prompt.id == enhanced.prompt.id,
                 onToggleFavorite: {
                     enhanced.prompt.metadata.isFavorite.toggle()
@@ -302,7 +302,7 @@ extension OptimizedContentView {
 
         return List(filtered, id: \.prompt.id) { enhanced in
             PromptRowView(
-                prompt: enhanced.prompt,
+                summary: enhanced.prompt.toSummary(),
                 isSelected: selectedPrompt?.prompt.id == enhanced.prompt.id,
                 onToggleFavorite: {
                     enhanced.prompt.metadata.isFavorite.toggle()

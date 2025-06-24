@@ -161,8 +161,8 @@ final class BitPackedMetadata {
 }
 
 /// Memory-mapped backing store for persistence
-final class MemoryMappedStore {
-    private let logger = Logger(subsystem: "com.prompt.app", category: "MemoryMappedStore")
+final class BitPackedMemoryMappedStore {
+    private let logger = Logger(subsystem: "com.prompt.app", category: "BitPackedMemoryMappedStore")
     private let url: URL
     private var fileHandle: FileHandle?
     private var mappedData: Data?

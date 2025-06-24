@@ -31,6 +31,11 @@ actor DataStore: ModelActor {
         return try modelContext.fetch(descriptor)
     }
 
+    func count<T: PersistentModel>(for descriptor: FetchDescriptor<T>) async throws -> Int {
+        logger.info("Counting models of type \(String(describing: T.self))")
+        return try modelContext.fetchCount(descriptor)
+    }
+
     func save() async throws {
         logger.info("Saving context changes")
         try modelContext.save()

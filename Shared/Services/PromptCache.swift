@@ -1,29 +1,38 @@
 import Foundation
 import os.log
 
-/// High-performance LRU cache for prompt data
+/// High-performance two-tier LRU cache for prompt data
 actor PromptCache {
     private let logger = Logger(subsystem: "com.prompt.app", category: "PromptCache")
 
     // Cache configuration
     private let maxSummaryCount = 10_000
     private let maxDetailCount = 100
+    private let maxContentCount = 50  // Separate limit for content
     private let maxMemoryBytes = 50 * 1024 * 1024  // 50MB
 
-    // Summary cache - hot data
-    private var summaryCache = PromptCacheLRU<UUID, PromptSummary>(capacity: 10_000)
+    // Two-tier cache system
+    // Tier 1: Metadata cache - hot data
+    private var metadataCache = PromptCacheLRU<UUID, PromptSummary>(capacity: 10_000)
     private var summaryBatches = PromptCacheLRU<String, PromptSummaryBatch>(capacity: 100)
 
-    // Detail cache - on-demand data
+    // Tier 2: Content cache - on-demand data
+    private var contentCache = PromptCacheLRU<UUID, String>(capacity: 50)
     private var detailCache = PromptCacheLRU<UUID, PromptDetail>(capacity: 100)
 
     // Memory tracking
     private var currentMemoryUsage: Int = 0
+    private var contentMemoryUsage: Int = 0
+
+    // Access tracking for smart eviction
+    private var accessCounts: [UUID: Int] = [:]
+    private var lastAccessTime: [UUID: Date] = [:]
 
     // MARK: - Summary Operations
 
     func getSummary(id: UUID) -> PromptSummary? {
-        return summaryCache.get(id)
+        updateAccessTracking(id)
+        return metadataCache.get(id)
     }
 
     func cacheSummary(_ summary: PromptSummary) {
@@ -35,7 +44,7 @@ actor PromptCache {
             evictOldestEntries()
         }
 
-        summaryCache.set(summary.id, summary)
+        metadataCache.set(summary.id, summary)
         currentMemoryUsage += estimatedSize
     }
 
@@ -74,6 +83,34 @@ actor PromptCache {
         cacheSummary(detail.toSummary())
     }
 
+    // MARK: - Content Operations (Two-tier cache)
+
+    func getContent(for id: UUID) -> String? {
+        updateAccessTracking(id)
+        return contentCache.get(id)
+    }
+
+    func cacheContent(_ content: String, for id: UUID) {
+        let contentSize = content.utf8.count
+
+        // Only cache if content is reasonable size
+        if contentSize > 1_000_000 {  // 1MB limit for individual content
+            logger.debug("Content too large to cache: \(contentSize) bytes")
+            return
+        }
+
+        if contentMemoryUsage + contentSize > maxMemoryBytes / 2 {
+            evictContentCache()
+        }
+
+        contentCache.set(id, content)
+        contentMemoryUsage += contentSize
+    }
+
+    func getCachedContent(for id: UUID) -> String? {
+        return contentCache.get(id)
+    }
+
     // MARK: - Batch Operations
 
     func warmCache(with summaries: [PromptSummary]) {
@@ -85,38 +122,84 @@ actor PromptCache {
     }
 
     func invalidate(id: UUID) {
-        summaryCache.remove(id)
+        metadataCache.remove(id)
         detailCache.remove(id)
+        contentCache.remove(id)
+        accessCounts.removeValue(forKey: id)
+        lastAccessTime.removeValue(forKey: id)
     }
 
     func invalidateAll() {
-        summaryCache.clear()
+        metadataCache.clear()
         summaryBatches.clear()
         detailCache.clear()
+        contentCache.clear()
         currentMemoryUsage = 0
+        contentMemoryUsage = 0
+        accessCounts.removeAll()
+        lastAccessTime.removeAll()
     }
 
     // MARK: - Private Methods
 
+    private func updateAccessTracking(_ id: UUID) {
+        accessCounts[id, default: 0] += 1
+        lastAccessTime[id] = Date()
+    }
+
+    private func evictContentCache() {
+        logger.debug("Evicting content cache, current usage: \(self.contentMemoryUsage) bytes")
+
+        // Evict least recently used content
+        let evictCount = max(1, contentCache.count / 5)
+        for _ in 0..<evictCount {
+            if let (id, _) = contentCache.removeLeastRecent() {
+                // Update memory tracking
+                contentMemoryUsage = max(0, contentMemoryUsage - (contentMemoryUsage / contentCache.count))
+            }
+        }
+    }
+
     private func evictOldestEntries() {
         logger.debug("Evicting cache entries, current memory: \(self.currentMemoryUsage) bytes")
 
-        // Evict 10% of detail cache first (larger items)
+        // Smart eviction based on access patterns
+        // 1. First evict content (largest items)
+        if contentMemoryUsage > maxMemoryBytes / 4 {
+            evictContentCache()
+        }
+
+        // 2. Then evict details
         let detailEvictCount = max(1, detailCache.count / 10)
         for _ in 0..<detailEvictCount {
             _ = detailCache.removeLeastRecent()
         }
 
-        // Then evict summary cache if needed
+        // 3. Finally evict metadata if needed
         if currentMemoryUsage > maxMemoryBytes * 9 / 10 {
-            let summaryEvictCount = max(1, summaryCache.count / 20)
+            let summaryEvictCount = max(1, metadataCache.count / 20)
             for _ in 0..<summaryEvictCount {
-                _ = summaryCache.removeLeastRecent()
+                _ = metadataCache.removeLeastRecent()
             }
         }
 
         // Recalculate memory usage (simplified)
         currentMemoryUsage = currentMemoryUsage * 8 / 10
+    }
+
+    // Memory pressure handling
+    func handleMemoryPressure() {
+        logger.warning("Memory pressure detected, clearing caches")
+
+        // Clear content cache first (largest items)
+        contentCache.clear()
+        contentMemoryUsage = 0
+
+        // Keep metadata cache if possible
+        if currentMemoryUsage > maxMemoryBytes / 2 {
+            detailCache.clear()
+            currentMemoryUsage /= 2
+        }
     }
 }
 

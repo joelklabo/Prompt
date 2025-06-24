@@ -89,24 +89,8 @@ extension DataStore {
 
         let prompts = try await fetch(descriptor)
 
-        // Convert in parallel for better performance
-        return await withTaskGroup(of: PromptSummary.self) { group in
-            for prompt in prompts {
-                group.addTask {
-                    prompt.toSummary()
-                }
-            }
-
-            var summaries: [PromptSummary] = []
-            for await summary in group {
-                summaries.append(summary)
-            }
-
-            // Maintain original order
-            return summaries.sorted { first, second in
-                prompts.firstIndex(where: { $0.id == first.id })! < prompts.firstIndex(where: { $0.id == second.id })!
-            }
-        }
+        // Convert to summaries
+        return prompts.map { $0.toSummary() }
     }
 
     /// Efficient aggregate operations

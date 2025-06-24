@@ -97,6 +97,14 @@ struct PromptWidgetView: View {
             MediumPromptWidget(prompt: entry.prompt)
         case .systemLarge:
             LargePromptWidget(prompt: entry.prompt)
+        case .systemExtraLarge:
+            LargePromptWidget(prompt: entry.prompt)
+        case .accessoryCircular:
+            SmallPromptWidget(prompt: entry.prompt)
+        case .accessoryRectangular:
+            SmallPromptWidget(prompt: entry.prompt)
+        case .accessoryInline:
+            SmallPromptWidget(prompt: entry.prompt)
         @unknown default:
             SmallPromptWidget(prompt: entry.prompt)
         }

@@ -3,7 +3,11 @@ import OSLog
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Cache Performance Tests")
 struct CachePerformanceTests {
@@ -91,7 +95,8 @@ struct CachePerformanceTests {
 
         // Build index
         let buildStart = CFAbsoluteTimeGetCurrent()
-        await textIndexer.buildIndex(for: prompts)
+        let summaries = prompts.map { $0.toSummary() }
+        await textIndexer.buildIndex(for: summaries)
         let buildTime = (CFAbsoluteTimeGetCurrent() - buildStart) * 1000
         Self.logger.info("Index build time for 10,000 prompts: \(buildTime)ms")
 
@@ -107,7 +112,7 @@ struct CachePerformanceTests {
 
         for query in searchQueries {
             let searchStart = CFAbsoluteTimeGetCurrent()
-            let results = await textIndexer.search(query: query, in: prompts)
+            let results = await textIndexer.search(query: query, in: summaries)
             let searchTime = (CFAbsoluteTimeGetCurrent() - searchStart) * 1000
 
             searchTimes.append(searchTime)
@@ -164,7 +169,7 @@ struct CachePerformanceTests {
 
         // Store same content multiple times
         let content = generateMarkdown(words: 1000)
-        var references: [ContentReference] = []
+        var references: [CASContentReference] = []
 
         for _ in 0..<10 {
             let ref = await cas.store(content)

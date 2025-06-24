@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FileStatsView: View {
-    let prompt: Prompt
+    let promptDetail: PromptDetail
 
     // Cached values to prevent recalculation on every render
     @State private var wordCount: Int = 0
@@ -9,7 +9,7 @@ struct FileStatsView: View {
     @State private var isCalculating = false
 
     private var contentSize: String {
-        let bytes = prompt.content.utf8.count
+        let bytes = promptDetail.content.utf8.count
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
@@ -43,32 +43,32 @@ struct FileStatsView: View {
                 GridRow {
                     Label("Created", systemImage: "calendar")
                         .foregroundColor(.secondary)
-                    Text(prompt.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    Text(promptDetail.createdAt.formatted(date: .abbreviated, time: .shortened))
                         .fontWeight(.medium)
                 }
 
                 GridRow {
                     Label("Modified", systemImage: "clock")
                         .foregroundColor(.secondary)
-                    Text(prompt.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    Text(promptDetail.modifiedAt.formatted(date: .abbreviated, time: .shortened))
                         .fontWeight(.medium)
                 }
 
                 GridRow {
                     Label("Views", systemImage: "eye")
                         .foregroundColor(.secondary)
-                    Text("\(prompt.metadata.viewCount)")
+                    Text("\(promptDetail.metadata.viewCount)")
                         .fontWeight(.medium)
                 }
 
                 GridRow {
                     Label("Copies", systemImage: "doc.on.clipboard")
                         .foregroundColor(.secondary)
-                    Text("\(prompt.metadata.copyCount)")
+                    Text("\(promptDetail.metadata.copyCount)")
                         .fontWeight(.medium)
                 }
 
-                if let lastViewed = prompt.metadata.lastViewedAt {
+                if let lastViewed = promptDetail.metadata.lastViewedAt {
                     GridRow {
                         Label("Last Viewed", systemImage: "clock.arrow.circlepath")
                             .foregroundColor(.secondary)
@@ -80,7 +80,7 @@ struct FileStatsView: View {
                 GridRow {
                     Label("Versions", systemImage: "clock.arrow.2.circlepath")
                         .foregroundColor(.secondary)
-                    Text("\(prompt.versions.count)")
+                    Text("\(promptDetail.versionCount)")
                         .fontWeight(.medium)
                 }
             }
@@ -91,7 +91,7 @@ struct FileStatsView: View {
         .onAppear {
             calculateStats()
         }
-        .onChange(of: prompt.content) { _, _ in
+        .onChange(of: promptDetail.content) { _, _ in
             calculateStats()
         }
     }
@@ -103,8 +103,8 @@ struct FileStatsView: View {
 
         // Calculate in background to avoid blocking UI
         Task.detached(priority: .userInitiated) {
-            let words = prompt.content.split(whereSeparator: \.isWhitespace).count
-            let lines = prompt.content.components(separatedBy: .newlines).count
+            let words = promptDetail.content.split(whereSeparator: \.isWhitespace).count
+            let lines = promptDetail.content.components(separatedBy: .newlines).count
 
             await MainActor.run {
                 self.wordCount = words

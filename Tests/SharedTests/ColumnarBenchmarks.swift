@@ -2,11 +2,15 @@ import Foundation
 import OSLog
 import Testing
 
-@testable import Prompt_macOS
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Columnar Storage Performance Benchmarks")
 struct ColumnarBenchmarks {
-    private static let logger = Logger(subsystem: "com.promptbank.tests", category: "ColumnarBenchmarks")
+    static let logger = Logger(subsystem: "com.promptbank.tests", category: "ColumnarBenchmarks")
 
     // MARK: - Test Data Generation
 
@@ -53,7 +57,7 @@ struct ColumnarBenchmarks {
         )
 
         // Measure single insertion
-        let measurements = await measureNanoTime(iterations: 1000) {
+        let avgNanos = await measureNanoTime(iterations: 1000) {
             _ = storage.insert(
                 id: UUID(),
                 title: "Test Prompt",
@@ -62,7 +66,6 @@ struct ColumnarBenchmarks {
             )
         }
 
-        let avgNanos = measurements.reduce(0, +) / UInt64(measurements.count)
         let avgMicros = Double(avgNanos) / 1000.0
 
         Self.logger.info("Single insertion: \(avgMicros)µs (target: <1µs)")
@@ -87,7 +90,7 @@ struct ColumnarBenchmarks {
         }
 
         let perItemNanos = elapsed / 10_000
-        let perItemMicros = perItemNanos / 1000
+        let perItemMicros = Double(perItemNanos) / 1000.0
 
         Self.logger.info("Batch insertion: \(perItemMicros)µs per item")
         #expect(perItemMicros < 0.5, "Batch insertion should be under 0.5µs per item")
@@ -101,21 +104,25 @@ struct ColumnarBenchmarks {
 
         // Insert test data
         let testData = Self.generateTestPrompts(count: 10_000)
-        let prepared = testData.map { (UUID(), $0.title, $0.content, $0.category) }
+        let prepared = testData.map { ColumnarStorage.BatchItem(
+            id: UUID(),
+            title: $0.title,
+            content: $0.content,
+            category: $0.category
+        ) }
         storage.batchInsert(prepared)
 
         // Generate random indices
         let indices = (0..<1000).map { _ in Int32.random(in: 0..<10_000) }
 
         // Measure fetch performance
-        let measurements = await measureNanoTime(iterations: 1000) {
+        let avgNanosPerIteration = await measureNanoTime(iterations: 1000) {
             for idx in indices {
                 _ = storage.fetch(index: idx)
             }
         }
 
-        let totalNanos = measurements.reduce(0, +) / UInt64(measurements.count)
-        let avgNanos = Double(totalNanos) / Double(indices.count)
+        let avgNanos = Double(avgNanosPerIteration) / Double(indices.count)
 
         Self.logger.info("Random access: \(avgNanos)ns (target: <100ns)")
         #expect(avgNanos < 100, "Random access should be under 100 nanoseconds")
@@ -129,7 +136,12 @@ struct ColumnarBenchmarks {
 
         // Insert large dataset
         let testData = Self.generateTestPrompts(count: 100_000)
-        let prepared = testData.map { (UUID(), $0.title, $0.content, $0.category) }
+        let prepared = testData.map { ColumnarStorage.BatchItem(
+            id: UUID(),
+            title: $0.title,
+            content: $0.content,
+            category: $0.category
+        ) }
         storage.batchInsert(prepared)
 
         // Test various search queries
@@ -154,7 +166,12 @@ struct ColumnarBenchmarks {
 
         // Insert balanced dataset
         let testData = Self.generateTestPrompts(count: 100_000)
-        let prepared = testData.map { (UUID(), $0.title, $0.content, $0.category) }
+        let prepared = testData.map { ColumnarStorage.BatchItem(
+            id: UUID(),
+            title: $0.title,
+            content: $0.content,
+            category: $0.category
+        ) }
         storage.batchInsert(prepared)
 
         // Measure filter performance for each category
@@ -180,7 +197,12 @@ struct ColumnarBenchmarks {
 
         // Insert test data
         let testData = Self.generateTestPrompts(count: 10_000)
-        let prepared = testData.map { (UUID(), $0.title, $0.content, $0.category) }
+        let prepared = testData.map { ColumnarStorage.BatchItem(
+            id: UUID(),
+            title: $0.title,
+            content: $0.content,
+            category: $0.category
+        ) }
         storage.batchInsert(prepared)
 
         // Measure after insertion

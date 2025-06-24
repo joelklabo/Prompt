@@ -3,14 +3,14 @@ import Foundation
 import os
 
 /// High-performance compressed text storage with parallel search
-final class CompressedTextStorage {
+actor CompressedTextStorage {
     // MARK: - Storage
 
     /// Compressed chunks of text data
     private var chunks: ContiguousArray<CompressedChunk> = []
 
     /// Index for fast content location
-    private var contentIndex: ContiguousArray<ContentLocation> = []
+    private var contentIndex: ContiguousArray<CompressedContentLocation> = []
 
     /// Decompression cache for frequently accessed content
     private var cache: LRUCache<Int, String> = LRUCache(capacity: 100)
@@ -99,7 +99,7 @@ final class CompressedTextStorage {
     }
 
     /// Parallel search across all content
-    func parallelSearch(query: String) -> Set<Int> {
+    func parallelSearch(query: String) async -> Set<Int> {
         let queryLower = query.lowercased()
         let indexCount = contentIndex.count
         guard indexCount > 0 else { return [] }
@@ -107,27 +107,32 @@ final class CompressedTextStorage {
         // Determine batch size for parallel processing
         let batchSize = max(100, indexCount / ProcessInfo.processInfo.activeProcessorCount)
         var results = Set<Int>()
-        let resultsLock = NSLock()
 
-        // Create concurrent search tasks
-        DispatchQueue.concurrentPerform(iterations: (indexCount + batchSize - 1) / batchSize) { batchIndex in
-            let start = batchIndex * batchSize
-            let end = min(start + batchSize, indexCount)
+        // Use TaskGroup for concurrent search (actor-safe)
+        await withTaskGroup(of: Set<Int>.self) { group in
+            let iterations = (indexCount + batchSize - 1) / batchSize
 
-            var localResults = Set<Int>()
+            for batchIndex in 0..<iterations {
+                let start = batchIndex * batchSize
+                let end = min(start + batchSize, indexCount)
 
-            for idx in start..<end {
-                let content = decompress(at: idx).lowercased()
-                if content.contains(queryLower) {
-                    localResults.insert(idx)
+                group.addTask {
+                    var localResults = Set<Int>()
+
+                    for idx in start..<end {
+                        let content = await self.decompress(at: idx).lowercased()
+                        if content.contains(queryLower) {
+                            localResults.insert(idx)
+                        }
+                    }
+
+                    return localResults
                 }
             }
 
-            // Merge local results
-            if !localResults.isEmpty {
-                resultsLock.lock()
+            // Collect results
+            for await localResults in group {
                 results.formUnion(localResults)
-                resultsLock.unlock()
             }
         }
 
@@ -164,7 +169,7 @@ final class CompressedTextStorage {
         return data
     }
 
-    private func storeCompressed(_ data: Data, originalSize: Int) -> ContentLocation {
+    private func storeCompressed(_ data: Data, originalSize: Int) -> CompressedContentLocation {
         // Find or create chunk with enough space
         var chunkIndex = chunks.count - 1
 
@@ -179,7 +184,7 @@ final class CompressedTextStorage {
         let chunk = chunks[chunkIndex]
         let offset = chunk.store(data)
 
-        return ContentLocation(
+        return CompressedContentLocation(
             chunkIndex: Int32(chunkIndex),
             offset: Int32(offset),
             compressedSize: Int32(data.count),
@@ -210,7 +215,7 @@ class CompressedChunk {
     }
 }
 
-struct ContentLocation {
+struct CompressedContentLocation {
     let chunkIndex: Int32
     let offset: Int32
     let compressedSize: Int32

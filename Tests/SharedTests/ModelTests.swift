@@ -2,16 +2,11 @@ import Foundation
 import SwiftData
 import Testing
 
-@testable import Prompt_macOS
-
-// Define custom test tags
-extension Tag {
-    @Tag static var unit: Self
-    @Tag static var integration: Self
-    @Tag static var performance: Self
-    @Tag static var ai: Self
-    @Tag static var ui: Self
-}
+#if os(macOS)
+    @testable import Prompt_macOS
+#elseif os(iOS)
+    @testable import Prompt_iOS
+#endif
 
 @Suite("Prompt Model Tests")
 struct PromptModelTests {
@@ -107,6 +102,8 @@ struct PromptModelTests {
             #expect(category.icon == "gearshape")
         case .commands:
             #expect(category.icon == "terminal")
+        case .context:
+            #expect(category.icon == "doc.text.fill")
         }
     }
 
@@ -145,20 +142,21 @@ struct PromptModelTests {
 
     @Test("Prompt relationships")
     func promptRelationships() async throws {
-        let prompt = Prompt(
-            title: "Relationship Test",
-            content: "Testing relationships",
-            category: .prompts
-        )
-
-        let tag1 = Tag(name: "swift", color: "#FF6B6B")
-        let tag2 = Tag(name: "testing", color: "#4ECDC4")
-
-        prompt.tags.append(tag1)
-        prompt.tags.append(tag2)
-
         try await MainActor.run {
             let context = container.mainContext
+            
+            let prompt = Prompt(
+                title: "Relationship Test",
+                content: "Testing relationships",
+                category: .prompts
+            )
+
+            let tag1 = Tag(name: "swift", color: "#FF6B6B")
+            let tag2 = Tag(name: "testing", color: "#4ECDC4")
+
+            prompt.tags.append(tag1)
+            prompt.tags.append(tag2)
+
             context.insert(prompt)
             context.insert(tag1)
             context.insert(tag2)

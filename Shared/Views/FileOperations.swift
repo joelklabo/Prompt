@@ -50,10 +50,10 @@ struct FileOperations {
 
     func handleExportCommand(appState: AppState) {
         #if os(macOS)
-            guard let selectedPrompt = appState.selectedPrompt else { return }
+            guard let selectedPromptDetail = appState.selectedPromptDetail else { return }
 
-            let markdown = MarkdownParser.generateMarkdown(for: selectedPrompt)
-            let filename = DragDropUtils.exportFilename(for: selectedPrompt)
+            let markdown = MarkdownParser.generateMarkdown(for: selectedPromptDetail)
+            let filename = DragDropUtils.exportFilename(for: selectedPromptDetail)
 
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
@@ -67,7 +67,7 @@ struct FileOperations {
                         if let url = savePanel.url {
                             let operationId = appState.progressState.startOperation(
                                 .exporting,
-                                message: "Exporting \(selectedPrompt.title)..."
+                                message: "Exporting \(selectedPromptDetail.title)..."
                             )
 
                             do {

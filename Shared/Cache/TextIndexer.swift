@@ -28,7 +28,7 @@ actor TextIndexer {
 
     // MARK: - Public API
 
-    func buildIndex(for prompts: [Prompt]) async {
+    func buildIndex(for summaries: [PromptSummary]) async {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Clear existing index
@@ -36,19 +36,22 @@ actor TextIndexer {
 
         // Process in parallel batches for maximum performance
         let batchSize = 100
+        let summaryCount = summaries.count  // Capture count before TaskGroup
+
+        // Process batches - PromptSummary is Sendable
         await withTaskGroup(of: Void.self) { group in
-            for batch in prompts.chunked(into: batchSize) {
-                group.addTask {
-                    await self.indexBatch(batch)
+            for batch in summaries.chunked(into: batchSize) {
+                group.addTask { [weak self] in
+                    await self?.indexBatch(Array(batch))
                 }
             }
         }
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        logger.info("Built index for \(prompts.count) documents in \(elapsed)ms")
+        logger.info("Built index for \(summaryCount) documents in \(elapsed)ms")
     }
 
-    func search(query: String, in prompts: [Prompt]) async -> [SearchResult] {
+    func search(query: String, in summaries: [PromptSummary]) async -> [SearchResult] {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Tokenize query
@@ -76,18 +79,18 @@ actor TextIndexer {
         var results: [SearchResult] = []
 
         for promptId in candidates {
-            guard let prompt = prompts.first(where: { $0.id == promptId }) else { continue }
+            guard let summary = summaries.first(where: { $0.id == promptId }) else { continue }
 
             let score = calculateScore(
                 query: queryTokens,
                 documentId: promptId,
-                documentText: prompt.title + " " + prompt.content
+                documentText: summary.title + " " + summary.contentPreview
             )
 
             if score > 0 {
                 let highlights = findHighlights(
                     queryTokens: queryTokens,
-                    in: prompt.content
+                    in: summary.contentPreview
                 )
 
                 results.append(
@@ -128,15 +131,15 @@ actor TextIndexer {
         totalDocuments = 0
     }
 
-    private func indexBatch(_ prompts: [Prompt]) async {
-        for prompt in prompts {
-            await indexDocument(prompt)
+    private func indexBatch(_ summaries: [PromptSummary]) async {
+        for summary in summaries {
+            await indexDocument(summary)
         }
     }
 
-    private func indexDocument(_ prompt: Prompt) async {
-        let documentId = prompt.id
-        let fullText = prompt.title + " " + prompt.content
+    private func indexDocument(_ summary: PromptSummary) async {
+        let documentId = summary.id
+        let fullText = summary.title + " " + summary.contentPreview + " " + summary.tagNames.joined(separator: " ")
 
         // Tokenize
         let tokens = tokenize(fullText)
